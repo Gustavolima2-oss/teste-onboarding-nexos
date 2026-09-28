@@ -1,0 +1,98 @@
+/* Tela Home (Figma 2350:3004). Coluna de 832 px centralizada (544–1376 em 1920).
+   Saudação em y=167; "Seu time" em 277; linha do Waz (64 px) em 329, com o nome e o
+   divisor de 752 px centralizados na altura do avatar (nome 22 px + gap 22 px). */
+
+.home {
+  width: var(--content-w);
+  margin: 0 auto;
+  padding: 167px 0 64px;
+}
+
+.greeting {
+  margin: 0;
+  font-size: 48px;
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  letter-spacing: -0.26px;
+}
+
+.greeting-muted {
+  color: var(--greeting-muted);
+}
+
+.section-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+}
+
+.team {
+  margin-top: 62px;
+}
+
+.member-list {
+  margin-top: 32px;
+}
+
+.member {
+  position: relative;
+  height: 64px;
+  padding-left: 80px;
+}
+
+/* Divisor 752 px sob o nome (22 px abaixo). */
+.member::after {
+  content: '';
+  position: absolute;
+  left: 80px;
+  right: 0;
+  top: 54px;
+  height: 1px;
+  background: var(--gray-8);
+}
+
+.member-avatar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 64px;
+  height: 64px;
+  border-radius: 180px;
+  overflow: hidden;
+}
+
+.member-avatar-bg,
+.member-avatar-crop {
+  position: absolute;
+  inset: 0;
+}
+
+.member-avatar-bg {
+  width: 64px;
+  height: 64px;
+}
+
+.member-avatar-crop img {
+  position: absolute;
+  max-width: none;
+}
+
+.member-avatar--waz .member-avatar-crop img {
+  left: -94px;
+  top: -9px;
+  width: 251.96px;
+  height: 140.62px;
+}
+
+.member-text {
+  position: absolute;
+  left: 80px;
+  top: 10px;
+}
+
+.member-name {
+  font-size: 17px;
+  font-weight: var(--fw-bold);
+  line-height: 22px;
+}

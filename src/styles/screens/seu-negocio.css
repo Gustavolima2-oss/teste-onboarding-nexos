@@ -1,0 +1,341 @@
+/* Tela Seu negócio (Figma 2350:51269 / 2350:51560).
+   Cabeçalho 72 px de x=79 até a borda direita. Coluna de 1060 px centralizada na
+   viewport (430–1490 em 1920): perfil em y=138 (avatar 200 px), atalhos (520×200) em 485,
+   "Métricas" em 765. O arco de fundo (Ellipse 19, 1841×590) tem centro 40,5 px à direita
+   do centro da viewport e fica fixo em px (recortado nas laterais em viewports menores). */
+
+.seu-negocio {
+  /* Cores sem estilo nomeado no tokens.css */
+  --sn-header-border: #e9e9e9;
+  --sn-gray-11: #f4f5f5; /* Gray/Gray 11 */
+  --sn-avatar-bg: #0f71b0;
+  --sn-card-label: #000000;
+  /* SF Pro Medium: o Chrome/macOS arredonda 510 (--fw-medium) para o Semibold (600) da
+     fonte do sistema; 500 cai no Medium, como no Figma. */
+  --sn-fw-medium: 500;
+
+  position: relative;
+  overflow: clip;
+  padding-bottom: 63px;
+}
+
+/* Recorte a partir de x=80 (borda esquerda do arco no Figma) até o fim do arco (y=240):
+   em viewports menores o arco não aparece no vão de 15 px entre a sidebar e o cabeçalho. */
+.negocio-arc {
+  position: absolute;
+  left: 80px;
+  right: 0;
+  top: 0;
+  height: 240px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Centro do arco = centro da viewport + 40,5 px; o recorte começa em 80, então seu 50%
+   fica 40 px à direita do centro da viewport. */
+.negocio-arc img {
+  position: absolute;
+  top: -350px;
+  left: calc(50% - 920px);
+  width: 1841px;
+  height: 590px;
+  max-width: none;
+}
+
+.negocio-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 72px;
+  margin-left: 79px;
+  padding: 0 40px;
+  background: var(--white);
+  border-bottom: 1px solid var(--sn-header-border);
+}
+
+.negocio-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: var(--fw-semibold);
+  line-height: 28px;
+  color: var(--gray-black);
+}
+
+.negocio-body {
+  position: relative;
+  width: 1060px;
+  margin: 0 auto;
+  padding-top: 66px;
+}
+
+/* ---------- Perfil (2350:51376) ---------- */
+
+.negocio-profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.profile-avatar {
+  position: relative;
+  display: block;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  border: 1.379px solid var(--white);
+  background: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(16.552px);
+  -webkit-backdrop-filter: blur(16.552px);
+  box-shadow:
+    0 2.759px 2.759px rgba(0, 0, 0, 0.13),
+    inset 0 1.379px 0 rgba(255, 255, 255, 0.7),
+    inset 0 0 20.69px rgba(255, 255, 255, 0.6);
+}
+
+.profile-avatar-img {
+  position: absolute;
+  /* 11,03 px a partir da borda externa (a borda de 1,379 px já ocupa parte) */
+  left: 9.655px;
+  top: 9.655px;
+  width: 179.31px;
+  height: 179.31px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--sn-avatar-bg);
+}
+
+.profile-text {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 154px;
+  text-align: center;
+}
+
+.profile-name {
+  margin: 0;
+  font-size: 24px;
+  font-weight: var(--fw-semibold);
+  line-height: 34px; /* 1.4 no Figma (33,6), arredondado como no layout (287 px) */
+  letter-spacing: -0.45px;
+  color: var(--gray-black);
+}
+
+.profile-address {
+  margin: 0;
+  font-size: 16px;
+  line-height: 21px;
+  color: var(--gray-3);
+}
+
+/* ---------- Atalhos (2350:51273) ---------- */
+
+.negocio-cards {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  width: 520px;
+  margin: 60px auto 0;
+}
+
+.negocio-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  width: 168px;
+  height: 200px;
+  padding: 15px; /* 16 px no Figma, com a borda de 1 px por dentro */
+  border: 1px solid var(--white);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow:
+    0 2px 2px rgba(0, 0, 0, 0.13),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 0 0 15px rgba(255, 255, 255, 0.6);
+  font: inherit;
+  color: var(--sn-card-label);
+  text-align: left;
+  cursor: pointer;
+}
+
+.negocio-card-icon {
+  position: relative;
+  display: block;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--sn-gray-11);
+}
+
+.negocio-card-icon img {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  width: 24px;
+  height: 24px;
+}
+
+.negocio-card-label {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 40px;
+  font-size: 16px;
+  font-weight: var(--fw-semibold);
+  line-height: 20px;
+}
+
+/* ---------- Métricas (2350:51289) ---------- */
+
+.metrics {
+  margin-top: 80px;
+}
+
+.metrics-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: var(--fw-semibold);
+  line-height: 28px;
+  color: var(--gray-black);
+}
+
+.metric-list {
+  display: flex;
+  gap: 20px;
+  margin-top: 24px;
+}
+
+.metric {
+  position: relative;
+  flex: 1 0 0;
+  height: 200px;
+  border-radius: 16px;
+  background: var(--sn-gray-11);
+}
+
+.metric-value,
+.metric-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin: 0;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.metric-value {
+  top: 109px;
+  font-size: 22px;
+  font-weight: var(--fw-semibold);
+  line-height: 25px;
+  color: var(--gray-black);
+}
+
+.metric-label {
+  top: 142px;
+  font-size: 16px;
+  font-weight: var(--sn-fw-medium);
+  line-height: 25px;
+  color: var(--gray-3);
+}
+
+/* Cards com "R$ 1.400,80" ficam 1 px abaixo no Figma. */
+.metric--vendas .metric-value,
+.metric--lojas .metric-value {
+  top: 110px;
+}
+
+.metric--vendas .metric-label,
+.metric--lojas .metric-label {
+  top: 143px;
+}
+
+.metric-icon {
+  position: absolute;
+}
+
+.metric-icon--leads {
+  left: 107px;
+  top: 41px;
+  width: 36px;
+  height: 45px;
+}
+
+.metric-user-head {
+  position: absolute;
+  left: 9px;
+  top: 0;
+  width: 18px;
+  height: 18px;
+}
+
+.metric-user-body {
+  position: absolute;
+  left: 0;
+  top: 24.75px;
+  width: 36px;
+  height: 20.25px;
+}
+
+.metric-icon--vendas {
+  left: 102px;
+  top: 41.5px;
+  width: 45px;
+  height: 45px;
+}
+
+.metric-icon--funil {
+  left: 103px;
+  top: 41px;
+  width: 45px;
+  height: 42px;
+}
+
+.metric-icon--lojas {
+  left: 95.96px;
+  top: 37.27px;
+  width: 56.818px;
+  height: 45.455px;
+}
+
+.metric-trend {
+  position: absolute;
+  left: 204px;
+  top: 16px;
+  width: 30px;
+  height: 30px;
+}
+
+.metric-trend-bg {
+  width: 30px;
+  height: 30px;
+}
+
+.metric-trend-arrow {
+  position: absolute;
+  left: 5.3px;
+  top: 10.78px;
+  width: 17.684px;
+  height: 7.896px;
+}
+
+.metric-trend--down .metric-trend-arrow {
+  left: 6.3px;
+  top: 11.78px;
+  transform: rotate(180deg);
+}
+
+/* Onboarding (etapa 6): na cópia destacada do Figma (2350:51460) os cards têm fundo
+   branco sólido; fora do destaque, o fundo translúcido do frame base. */
+.negocio-card {
+  transition: background-color var(--coach-target-dur, 450ms) var(--ease-out);
+}
+
+.negocio-cards.is-coach-target .negocio-card {
+  background: var(--white);
+}

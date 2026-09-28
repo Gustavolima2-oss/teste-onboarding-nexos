@@ -1,0 +1,70 @@
+/* Tokens extraídos do Figma (bHRCpjv9l8QjTGz6AYldty, frames 586:366 / 586:40 / 586:222). */
+:root {
+  /* Cores: estilos nomeados do Figma */
+  --gray-black: #0c0d0d; /* Gray/Black */
+  --gray-white: #fdfdfd; /* Gray/White (fundo da página) */
+  --gray-3: #798282; /* Gray/Gray 3 */
+  --gray-7: #c2c8c8; /* Gray/Gray 7 (borda "Ver todas") */
+  --gray-8: #d3d7d7; /* Gray/Gray 8 (divisores) */
+  --gray-10: #ebeded; /* Gray/Gray 10 (borda da sidebar) */
+  --gray-8-0: #262c3a; /* Gray/8.0 (texto "Ver todas") */
+  --accent-indigo: #6d7cff; /* Accents/Indigo (bolinha de não lido) */
+  --accent-blue: #0091ff; /* accent/blue (badge da sidebar) */
+
+  /* Cores sem estilo nomeado */
+  --greeting-muted: #9ba4a4; /* "Olá," */
+  --nav-active-bg: #e5e5e5; /* item ativo da sidebar */
+  --nav-divider: #e2e2e2;
+  --white: #ffffff;
+
+  /* Cards de ferramentas */
+  --tool-caixa: #e7f7fd;
+  --tool-agendamentos: #eafaf1;
+  --tool-contratos: #eee7fe;
+  --tool-escalas: #e9fbfc;
+  --tool-prospeccao: #fdf6e8;
+
+  /* Coach mark */
+  --overlay: rgba(0, 0, 0, 0.22); /* Rectangle 21 (586:180 / 586:342) */
+  --tooltip-bg: #252321; /* 586:208 / 586:354 */
+  --tooltip-fg: #ffffff;
+
+  /* Tipografia: SF Pro no macOS; Inter (carregado) como fallback consistente no Windows.
+     BlinkMacSystemFont é o nome que o Chrome/macOS reconhece para o SF Pro (o Chrome
+     ignora -apple-system e os nomes "SF Pro *"); no Windows ele não existe e cai no Inter.
+     O botão "Ver todas" usa Inter no Figma. */
+  --font-sf:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Inter', system-ui,
+    sans-serif;
+  --font-inter: 'Inter', system-ui, sans-serif;
+  --fw-regular: 400;
+  --fw-medium: 500; /* SF Pro Medium (510 no Figma; o Chrome/macOS arredonda 510 para 600) */
+  --fw-semibold: 590; /* SF Pro Semibold */
+  --fw-bold: 700;
+
+  /* Raios */
+  --radius-nav-item: 7.387px;
+  --radius-tool: 16px;
+  --radius-tool-icon: 5.714px;
+  --radius-highlight-card: 16px;
+  --radius-tooltip: 8px;
+  --radius-pill: 360px;
+  --radius-ver-todas: 90px;
+
+  /* Sombras (as do Figma são praticamente invisíveis; mantidas por fidelidade) */
+  --shadow-tool-caixa: 0 2px 2px rgba(231, 247, 253, 0.13);
+
+  /* Layout base (frame 1920×1080) */
+  --sidebar-w: 64px;
+  --content-w: 832px;
+
+  /* Z-index das camadas: conteúdo < overlay < alvo < tooltip = Nexo */
+  --z-overlay: 100;
+  --z-target: 110;
+  --z-tooltip: 120;
+  --z-nexo: 120;
+  --z-debug: 130;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}

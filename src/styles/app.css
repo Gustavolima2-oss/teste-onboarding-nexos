@@ -1,0 +1,249 @@
+/* Letter-spacing: o Figma usa o tracking do Apple HIG (−0,23 em 15 px, −0,43 em 17 px...).
+   No macOS o navegador já aplica esse tracking pela tabela `trak` da SF Pro, então
+   repetir o valor dobra o efeito. Medido: sem letter-spacing a 15 px o texto bate com o
+   Figma (592,1 vs 592 px). Só o título de 48 px mantém o valor do Figma (349,5 vs 347 px).
+   Textos em Inter ("Ver todas") mantêm o valor do Figma. */
+
+/* Base do app e sidebar (Figma HYM49734BUPEwZfnNLLDY4, 2350:3005 / 2350:51397). */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--gray-white);
+  color: var(--gray-black);
+  font-family: var(--font-sf);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-variation-settings: 'wdth' 100;
+}
+
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  display: block;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+/* ---------- Sidebar (586:367) ---------- */
+
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: var(--sidebar-w);
+  background: var(--white);
+  border-right: 1px solid var(--gray-10);
+  z-index: 10;
+}
+
+.company-avatar {
+  position: absolute;
+  left: 8px;
+  top: 24px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--white);
+  border: 0.198px solid var(--white);
+  box-shadow:
+    0 0.397px 0.198px rgba(0, 0, 0, 0.13),
+    inset 0 0.198px 0 rgba(255, 255, 255, 0.7),
+    inset 0 0 2.974px rgba(255, 255, 255, 0.6);
+}
+
+.company-avatar::before,
+.company-avatar img {
+  position: absolute;
+  left: 2.28px;
+  top: 1.8px;
+  width: 43.034px;
+  height: 43.034px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.company-avatar::before {
+  content: '';
+  background: #0f71b0;
+}
+
+.company-panel {
+  position: absolute;
+  left: 37px;
+  top: 19px;
+  width: 21px;
+  height: 21px;
+  padding: 0;
+  border: 0.087px solid var(--white);
+  border-radius: 50%;
+  background: var(--white);
+  box-shadow: 0 0.173px 0.5px rgba(0, 0, 0, 0.13);
+  cursor: pointer;
+}
+
+.company-panel img {
+  position: absolute;
+  left: 4.91px;
+  top: 4.91px;
+}
+
+.nav-group {
+  position: absolute;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-group--top {
+  top: 88px;
+}
+
+.nav-group--team {
+  top: 222px;
+}
+
+/* Favoritos (2350:51523): círculo branco 36 px, ícone 16 px, a partir de y=283. */
+.nav-group--favorites {
+  top: 283px;
+  left: 13px;
+}
+
+.nav-fav {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 380px;
+  background: var(--white);
+}
+
+.nav-group--settings {
+  bottom: 24px;
+}
+
+.nav-item {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-nav-item);
+}
+
+.nav-item.is-active {
+  background: var(--nav-active-bg);
+}
+
+.nav-divider {
+  position: absolute;
+  left: 8px;
+  width: 48px;
+  height: 14px;
+}
+
+.nav-divider--1 {
+  top: 200px;
+}
+
+.nav-divider--2 {
+  top: 262px;
+}
+
+/* Item ativo de Seu negócio (2350:51423): ícone preenchido sobre círculo branco. */
+.nav-item--seu-negocio.is-active {
+  background: none;
+  padding: 0;
+}
+
+/* Área das telas (troca com fade). */
+.screen {
+  display: block;
+  min-height: 100vh;
+}
+
+/* Sonda de medição (Router.probe): mesma área da viewport, invisível. */
+.screen.is-probe {
+  position: fixed;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.nav-avatar {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--gray-10);
+}
+
+.nav-avatar img {
+  position: absolute;
+  max-width: none;
+}
+
+/* Recortes dos avatares, convertidos das caixas aninhadas do Figma para px. */
+.nav-avatar--pipo img {
+  left: -10.89px;
+  top: -12.64px;
+  width: 46.7px;
+  height: 84.64px;
+}
+
+.nav-avatar--waz img {
+  left: -29.16px;
+  top: -0.19px;
+  width: 82.31px;
+  height: 45.94px;
+}
+
+.nav-avatar--maky img {
+  left: -30.15px;
+  top: -4.84px;
+  width: 84.1px;
+  height: 46.94px;
+}
+
+/* Badge de não lidas do Waz (2350:51737): 16×16 no canto superior direito do item
+   de 32 px (x 39 − 16 = 23, y 222 − 222 = 0), SF Pro 8/1,2, tracking −0,08 px.
+   Fica dentro do alvo, então sobe junto com ele acima do overlay. */
+.nav-badge {
+  position: absolute;
+  left: 23px;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-blue);
+  color: var(--white);
+  font-family: var(--font-sf);
+  font-size: 8px;
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: -0.08px;
+  pointer-events: none;
+}

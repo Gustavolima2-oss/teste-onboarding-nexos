@@ -1,0 +1,389 @@
+/* Coach mark do onboarding (Figma HYM49734BUPEwZfnNLLDY4, seção 2350:2826). */
+
+:root {
+  /* Opacidade do overlay (0–1). Overlay e véus de camada usam o mesmo valor. */
+  --coach-dim: 1;
+  /* Duração da transição do destaque do alvo (definida pelo Coachmark). */
+  --coach-target-dur: 450ms;
+  /* Overlay: Rectangle 21 (2350:3002) — backdrop-blur 4.45px + rgba(0,0,0,0.45). */
+  --coach-blur: 4.45px;
+  --coach-overlay: rgba(0, 0, 0, 0.45);
+  /* Tooltip (2350:2975) */
+  --coach-bg: #0f0f0f;
+  --coach-text: #a5a5a5;
+  --coach-dot: #525b5b;
+  --coach-dot-on: #fdfdfd;
+}
+
+.coach-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--coach-overlay);
+  backdrop-filter: blur(var(--coach-blur));
+  -webkit-backdrop-filter: blur(var(--coach-blur));
+  opacity: var(--coach-dim);
+  z-index: var(--z-overlay);
+}
+
+/* Camada fixa que contém o alvo (sidebar): sobe acima do overlay e ganha um véu
+   próprio com o mesmo blur e cor; o alvo fica acima do véu, nítido. */
+.is-coach-layer,
+.is-coach-layer-leaving {
+  z-index: var(--z-target);
+}
+
+.is-coach-layer::after,
+.is-coach-layer-leaving::after {
+  content: '';
+  position: absolute;
+  inset: 0 -1px 0 0;
+  background: var(--coach-overlay);
+  backdrop-filter: blur(var(--coach-blur));
+  -webkit-backdrop-filter: blur(var(--coach-blur));
+  opacity: var(--coach-dim);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.is-coach-layer .is-coach-target,
+.is-coach-layer-leaving .is-coach-leaving {
+  z-index: 2;
+}
+
+/* ---------- Alvos ---------- */
+
+/* Todo alvo precisa ser posicionado para subir acima do overlay (relative sem
+   deslocamento não muda o layout). */
+[data-coach] {
+  position: relative;
+}
+
+.is-coach-target,
+.is-coach-leaving {
+  z-index: var(--z-target);
+}
+
+/* 'circle': fundo branco circular (itens da sidebar; 2350:2998, 2350:51244). */
+.nav-item,
+.nav-fav,
+.nav-chat {
+  transition:
+    background-color var(--coach-target-dur) var(--ease-out),
+    border-radius var(--coach-target-dur) var(--ease-out);
+}
+
+.is-coach-target[data-coach-highlight='circle'] {
+  background: var(--white);
+  border-radius: var(--radius-pill);
+}
+
+/* Alvo navegável (targetClickAdvances): clicável, com hover visível sobre o overlay. */
+.is-coach-target[data-coach-advance] {
+  cursor: pointer;
+  transition:
+    background-color var(--coach-target-dur) var(--ease-out),
+    border-radius var(--coach-target-dur) var(--ease-out),
+    box-shadow 150ms var(--ease-out);
+}
+
+html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
+  background: #ebeded;
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 0.35);
+}
+
+.is-coach-busy .is-coach-target[data-coach-advance] {
+  cursor: default;
+}
+
+/* ---------- Tooltip ---------- */
+
+.coach-tooltip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 378px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px 0;
+  border-radius: 8px;
+  background: var(--coach-bg);
+  overflow: hidden;
+  z-index: var(--z-tooltip);
+  font-family: var(--font-inter);
+}
+
+.coach-tooltip[hidden] {
+  display: none;
+}
+
+.coach-tooltip[data-kind='preview'],
+.coach-tooltip[data-kind='video'] {
+  padding-top: 0;
+}
+
+.coach-head,
+.coach-body,
+.coach-footer {
+  padding: 0 24px;
+}
+
+.coach-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.coach-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: normal;
+  letter-spacing: -0.04px;
+  color: var(--white);
+}
+
+.coach-audio {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+/* O SVG do Figma já tem opacidade 0,6 (estado padrão, narração desligada). */
+.coach-audio.is-on img {
+  filter: brightness(1.7);
+}
+
+.coach-audio:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.coach-body {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: normal;
+  color: var(--coach-text);
+}
+
+.coach-body p {
+  /* No Figma a caixa de texto tem 334 px (4 px além do padding direito de 24). */
+  width: 334px;
+  margin: 0;
+}
+
+/* No Figma os parágrafos são separados por uma linha vazia. */
+.coach-body p + p {
+  margin-top: 1lh;
+}
+
+.coach-body strong {
+  font-weight: 700;
+  color: var(--white);
+}
+
+.coach-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.coach-dots {
+  display: flex;
+  gap: 3.478px;
+}
+
+.coach-dots span {
+  width: 5.217px;
+  height: 5.217px;
+  border-radius: 52px;
+  background: var(--coach-dot);
+  transition: background-color 200ms var(--ease-out);
+}
+
+.coach-dots span.is-done {
+  background: var(--coach-dot-on);
+}
+
+.coach-next {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  color: var(--gray-black);
+  font-family: var(--font-sf);
+  font-size: 14px;
+  font-weight: var(--fw-medium);
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.coach-next:hover {
+  background: #ebeded;
+}
+
+.coach-next:disabled {
+  cursor: default;
+}
+
+/* "Voltar" (2414:5165): 73×40, sem fundo, SF Pro Medium 14/1,2 branco. */
+.coach-back {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--white);
+  font-family: var(--font-sf);
+  font-size: 14px;
+  font-weight: var(--fw-medium);
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out);
+}
+
+.coach-back:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.08);
+}
+
+.coach-back:disabled {
+  cursor: default;
+}
+
+/* Etapa 1: ocupa o lugar, mas não aparece nem recebe foco (disabled). */
+.coach-back.is-hidden {
+  visibility: hidden;
+}
+
+.coach-tooltip button:focus-visible {
+  outline: 2px solid var(--white);
+  outline-offset: 2px;
+}
+
+/* ---------- Mídia (prévia e vídeo): 378×210 no topo ---------- */
+
+.coach-media {
+  position: relative;
+  height: 210px;
+  overflow: hidden;
+  background: var(--white);
+}
+
+.coach-media[hidden] {
+  display: none;
+}
+
+.coach-close {
+  position: absolute;
+  left: 341.29px;
+  top: 11.59px;
+  display: grid;
+  place-items: center;
+  width: 24.414px;
+  height: 24.414px;
+  padding: 0;
+  border: 0;
+  border-radius: 76px;
+  background: rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  z-index: 2;
+}
+
+/* Vídeo (2350:51481): poster + gradiente + botão Play central. */
+.coach-poster,
+.coach-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.coach-poster-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 33.925%, rgba(0, 0, 0, 0.6));
+  pointer-events: none;
+}
+
+.coach-play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 11px;
+  border: 1.3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 90px;
+  background: #000;
+  color: var(--white);
+  font-family: var(--font-inter);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: normal;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+}
+
+.coach-media.is-playing .coach-poster,
+.coach-media.is-playing .coach-poster-shade,
+.coach-media.is-playing .coach-play {
+  display: none;
+}
+
+.coach-video {
+  z-index: 1;
+}
+
+/* Prévia (2350:46911): card, ícone de fixar, mini tooltip e cursor animados. */
+.coach-preview {
+  position: absolute;
+  inset: 0;
+}
+
+.coach-preview > * {
+  position: absolute;
+}
+
+.coach-preview-pin {
+  width: 13px;
+  height: 13px;
+  background: transparent;
+  -webkit-mask: url('../assets/pushpin.svg') center / contain no-repeat;
+  mask: url('../assets/pushpin.svg') center / contain no-repeat;
+  transition: background-color 150ms var(--ease-out);
+}
+
+.coach-preview-pin.is-pinned {
+  background: var(--accent-blue);
+}
+
+.coach-preview-tip {
+  padding: 8.299px;
+  border: 0.692px solid #333b4d;
+  border-radius: 8px;
+  background: #13161d;
+  color: var(--white);
+  font-family: 'DM Sans', var(--font-inter);
+  font-size: 8.99px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.18px;
+  white-space: nowrap;
+}
+
+.coach-preview-cursor {
+  width: 16px;
+  height: 17px;
+}

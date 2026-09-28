@@ -1,0 +1,27 @@
+# Dependências e build
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+
+# Sistema, editores, logs e temporários
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+logs/
+tmp/
+*.tmp
+.idea/
+.vscode/
+scripts/.*-tmp.mjs
+
+# Ambiente local (o .env.production, sem segredos, vai para o repositório)
+.env.local
+.env.*.local
+
+# GLB original (~23 MB): fica fora. Só public/models/nexo.glb (otimizado) é versionado.
+assets-src/*.glb
+
+# Prints e vídeos de conferência (~40 MB, gerados por npm run checkpoint / record)
+docs/checkpoints/

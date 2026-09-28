@@ -1,0 +1,43 @@
+/* Canvas do Nexo: tela inteira, acima do overlay (cores cheias sobre a página escurecida). */
+.nexo-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: var(--z-nexo);
+}
+
+/* Debug (tecla D) */
+.nexo-debug-ref {
+  position: fixed;
+  width: 385px;
+  height: 214.87px;
+  pointer-events: none;
+  z-index: var(--z-debug);
+}
+
+.nexo-debug-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(12, 13, 13, 0.88);
+  color: #e8ffe8;
+  font:
+    11px/1.45 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  pointer-events: none;
+  z-index: var(--z-debug);
+}
+
+/* Fallback sem WebGL / GLB com erro: PNG posicionado pela mesma API (NexoGuide). */
+.nexo-fallback {
+  position: fixed;
+  pointer-events: none;
+  z-index: var(--z-nexo);
+}
