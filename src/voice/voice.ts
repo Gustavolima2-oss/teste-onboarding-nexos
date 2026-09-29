@@ -44,7 +44,7 @@ export type VoiceFrame = {
   voice: boolean;
   /** Tempo no relógio da etapa (s). */
   t: number;
-  /** 0..1 do anel; só cresce dentro de um modo (retomar volta ao início da palavra, o anel não). */
+  /** 0..1 do anel; só cresce dentro de um modo (congela na pausa, volta a 0 ao ligar a voz). */
   progress: number;
   /** Palavras já acesas (no timer, todas). */
   spoken: number;
@@ -182,7 +182,11 @@ export class VoicePlayer {
     await this.begin(true);
   }
 
-  /** Pausa: o áudio para, o anel congela e a palavra que estava sendo dita fica acesa. */
+  /**
+   * Pausa. Com voz, vale como DESLIGAR: o áudio para, o texto inteiro acende (como no modo
+   * sem voz), a boca volta ao padrão e o anel congela; nada avança sozinho. Ligar de novo
+   * (enableVoice) recomeça a fala do zero. No timer, congela o relógio (vídeo, aba oculta).
+   */
   pause(): void {
     if (this.mode !== 'playing') return;
     this.pausedAt = this.time();
@@ -192,7 +196,10 @@ export class VoicePlayer {
     this.emit();
   }
 
-  /** Retoma: com voz, do INÍCIO da palavra em que parou; no timer, de onde parou. */
+  /**
+   * Retoma de onde parou. Só para pausas automáticas (aba em segundo plano, vídeo): a
+   * pausa do usuário na voz não retoma, ele liga a voz de novo e ela recomeça do zero.
+   */
   async resume(): Promise<void> {
     if (this.mode !== 'paused' || !this.clip) return;
     this.hiddenPause = false;
@@ -201,9 +208,7 @@ export class VoicePlayer {
       this.clock = { t: this.pausedAt, since: performance.now() };
       return;
     }
-    const at = this.wordStartAt(this.pausedAt);
     if (!this.el) return;
-    this.el.currentTime = at;
     const token = this.token;
     try {
       await this.el.play();
@@ -341,17 +346,6 @@ export class VoicePlayer {
     return this.el?.currentTime ?? 0;
   }
 
-  /** Início da palavra em curso em `t` (a última que já começou). */
-  private wordStartAt(t: number): number {
-    const words = this.clip?.words ?? [];
-    let at = 0;
-    for (const w of words) {
-      if (w.start <= t + 1e-3) at = w.start;
-      else break;
-    }
-    return at;
-  }
-
   private level(): number | null {
     const an = this.el ? this.analysers.get(this.el) : undefined;
     if (!an) return null;
@@ -381,8 +375,8 @@ export class VoicePlayer {
     const ended = this.mode === 'ended';
     this.shown = ended ? 1 : Math.max(this.shown, Math.min(1, t / span));
     const base = { id: this.id, mode: this.mode, t, progress: this.shown };
-    if (!this.voice) {
-      // Sem voz: texto inteiro aceso desde o início, boca parada.
+    if (!this.voice || this.mode === 'paused') {
+      // Sem voz, ou voz pausada: texto inteiro aceso, boca parada, anel congelado.
       const all = clip.words.length;
       return { ...base, voice: false, spoken: all, active: -1, speaking: false, level: null };
     }

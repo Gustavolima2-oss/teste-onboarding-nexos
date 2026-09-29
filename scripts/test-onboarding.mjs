@@ -797,35 +797,42 @@ const recorder = () => {
         next.icon === 'playing',
       JSON.stringify(next),
     );
-    // (5) pausa e retomada.
+    // (5) Pausar vale como desligar; ligar de novo recomeça do zero.
     await p.waitForFunction(() => window.__nexo.voice.lastFrame?.t > 1.2, null, { timeout: 8000 });
     // Espaço com o foco dentro do tooltip (na etapa 3 o foco inicial é o pin, onde o Espaço favorita).
     await p.focus('.coach-audio');
+    const beforePause = await snap(p);
     await p.keyboard.press(' ');
     const a = await snap(p);
     await p.waitForTimeout(700);
     const b = await snap(p);
     check(
-      'pausa: áudio parado, anel e grifo congelados, boca no padrão, ícone "Continuar ouvindo"',
+      'pausa: áudio parado, TODO o texto branco, anel congelado, boca no padrão, ícone do alto-falante',
       a.audioPaused &&
         b.audioPaused &&
+        beforePause.spoken < beforePause.spans &&
+        a.spoken === a.spans &&
+        b.spoken === b.spans &&
         a.progress === b.progress &&
-        a.spoken === b.spoken &&
-        b.spoken > 0 &&
-        b.icon === 'paused' &&
+        b.progress > 0 &&
+        b.icon === 'off' &&
         b.pressed === 'false' &&
-        b.label === 'Continuar ouvindo' &&
+        b.label === 'Ouvir o Nexo' &&
         b.face !== 'talk',
-      JSON.stringify({ a, b }),
+      JSON.stringify({ beforePause: beforePause.spoken, a, b }),
     );
-    const words = manifest[VOICE_IDS[2]].words;
-    const expectStart = words.filter((w) => w.start <= a.t + 1e-3).pop().start;
     await p.keyboard.press(' ');
-    const r = await p.evaluate(() => window.__nexo.voice.element.currentTime);
+    await p.waitForTimeout(120);
+    const again = await snap(p);
     check(
-      'retomar volta ao início da palavra em que parou',
-      Math.abs(r - expectStart) < 0.12,
-      `currentTime ${r.toFixed(3)} / start ${expectStart}`,
+      'ligar a voz de novo recomeça do zero: áudio do início, texto cinza, anel perto de 0%',
+      again.voice &&
+        !again.audioPaused &&
+        again.t < 0.4 &&
+        again.spoken < again.spans &&
+        again.progress < b.progress &&
+        again.icon === 'playing',
+      JSON.stringify(again),
     );
     // Etapa 3 com voz: o pin no meio da fala interrompe o áudio e avança.
     await p.waitForTimeout(400);
@@ -864,6 +871,19 @@ const recorder = () => {
     await ready(p, IDS[4]);
     await p.waitForFunction(() => !window.__nexo.voice.element?.paused, null, { timeout: 5000 });
     await p.click('.coach-audio'); // pausa
+    const paused5 = await snap(p);
+    // Sem avanço automático depois da pausa: mais que a fala inteira da etapa + 400 ms.
+    await p.waitForTimeout(manifest[VOICE_IDS[4]].duration * 1000 + 900);
+    const still5 = await snap(p);
+    const step5 = await p.evaluate(() => document.documentElement.dataset.coachStep);
+    check(
+      'pausa desliga o avanço automático da etapa (anel congelado, texto branco)',
+      step5 === IDS[4] &&
+        still5.progress === paused5.progress &&
+        still5.spoken === still5.spans &&
+        still5.state === 'paused',
+      JSON.stringify({ step5, paused5: paused5.progress, still5 }),
+    );
     await p.click('.coach-next');
     await ready(p, IDS[5]);
     await p.waitForTimeout(300);
@@ -1168,6 +1188,80 @@ const recorder = () => {
     );
     await c.close();
   }
+}
+
+// ---------- 12. Etapas 6 e 7: thumb em vídeo sob o "Play" ----------
+{
+  const thumb = (p) =>
+    p.evaluate(() => {
+      const v = document.querySelector('.coach-media video.coach-loop');
+      const play = document.querySelector('.coach-play');
+      const r = play?.getBoundingClientRect();
+      const top = r ? document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) : null;
+      return {
+        loop: !!v,
+        playing: !!v && !v.paused && v.currentTime > 0.2,
+        muted: v?.muted,
+        fit: v ? getComputedStyle(v).objectFit : null,
+        sources: v ? [...v.querySelectorAll('source')].map((s) => s.src.split('/').pop()) : [],
+        playOnTop: !!top && !!play?.contains(top),
+      };
+    });
+  for (const [n, name] of [
+    [6, 'base-conhecimento'],
+    [7, 'produtos-servicos'],
+  ]) {
+    const { page, context, errors } = await newPage();
+    await page.goto(`${base}?onboarding=reset&step=${n}`);
+    await ready(page, IDS[n - 1]);
+    await page
+      .waitForFunction(
+        () => {
+          const v = document.querySelector('video.coach-loop');
+          return v && !v.paused && v.currentTime > 0.2;
+        },
+        null,
+        { timeout: 8000 },
+      )
+      .catch(() => {});
+    const t = await thumb(page);
+    check(
+      `etapa ${n}: thumb em vídeo (${name}, WebM antes do MP4) tocando mudo, "Play" por cima`,
+      t.playing &&
+        t.muted &&
+        t.fit === 'cover' &&
+        t.sources.join(',') === `${name}.webm,${name}.mp4` &&
+        t.playOnTop,
+      JSON.stringify(t),
+    );
+    if (n === 6) {
+      await page.click('.coach-play');
+      await page.waitForTimeout(600);
+      const played = await page.evaluate(() => ({
+        full:
+          !!document.querySelector('video.coach-video') &&
+          !document.querySelector('video.coach-video').paused,
+        loopPaused: document.querySelector('video.coach-loop')?.paused,
+      }));
+      check(
+        'etapa 6: "Play" continua abrindo o vídeo completo e pausa o thumb',
+        played.full && played.loopPaused === true,
+        JSON.stringify(played),
+      );
+    }
+    check(`etapa ${n} (thumb): sem erros`, errors.length === 0, errors.join(' | '));
+    await context.close();
+  }
+  const { page: p, context: c } = await newPage({ reducedMotion: 'reduce' });
+  await p.goto(`${base}?onboarding=reset&step=6`);
+  await ready(p, IDS[5]);
+  await p.waitForTimeout(800);
+  const r = await p.evaluate(() => ({
+    loop: !!document.querySelector('video.coach-loop'),
+    poster: document.querySelector('.coach-media img.coach-poster')?.naturalWidth ?? 0,
+  }));
+  check('etapa 6 com movimento reduzido: só a capa', !r.loop && r.poster > 0, JSON.stringify(r));
+  await c.close();
 }
 
 await browser.close();

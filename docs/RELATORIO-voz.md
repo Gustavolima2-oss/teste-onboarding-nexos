@@ -45,9 +45,9 @@ O filtro novo depende do `rubberband` dentro do ffmpeg. Esta máquina não tem H
 
 - **Início:** o onboarding começa sempre sem voz. O texto aparece inteiro, a boca fica no sorriso (com as piscadas) e o anel é o timer de leitura. As constantes `SILENT_TIMER_FACTOR` (2,5) e `SILENT_TIMER_MIN_MS` (6000) ficam em `src/voice/voice.ts`.
 - **Ligar a voz:** o alto-falante (ou Espaço) toca o áudio da etapa do início, o texto volta ao cinza, o anel reinicia do zero e passa a seguir `currentTime / duration`. A voz continua ligada nas etapas seguintes.
-- **Pausar:** o áudio para, o anel congela e a palavra que estava sendo dita fica acesa. Retomar volta ao `start` dessa palavra. Avançar com a voz pausada leva a etapa seguinte ao modo sem voz.
+- **Pausar (vale como desligar):** o áudio para, o texto inteiro fica branco, a boca volta ao padrão e o anel congela; não há avanço automático nessa etapa. Ligar de novo recomeça a fala do zero. Avançar com a voz pausada leva a etapa seguinte ao modo sem voz.
 - **Ícone:** mostra a ação do clique.
-  - Alto-falante do Figma com a voz desligada ("Ouvir o Nexo") ou pausada ("Continuar ouvindo").
+  - Alto-falante do Figma com a voz desligada ("Ouvir o Nexo") ou pausada ("Ouvir o Nexo").
   - `Pause` do Phosphor, com o mesmo tamanho (18×18), cor e opacidade, enquanto a voz toca ("Pausar", `aria-pressed="true"`).
   - A troca é por crossfade de 120 ms.
 - **Boca:** só fala com a voz ligada e uma palavra ativa, com a altura das barras pelo volume real (`AnalyserNode`). Nos outros casos fica no sorriso, trocando no mesmo quadro.
@@ -68,17 +68,17 @@ Divergências e decisões (também no README):
 
 ## 5. Testes (seção de voz da suíte)
 
-| Verificação                                                                           | Resultado                                              |
-| ------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| Começa sem voz: texto branco, nenhum áudio, anel avançando                            | ok                                                     |
-| Sem voz, avanço em `max(duração × 2,5; 6 s)`                                          | ver a seção 7                                          |
-| Alto-falante liga a voz: áudio certo, texto cinza, spans = manifesto, anel reiniciado | ok                                                     |
-| Com voz, avanço em duração + 400 ms                                                   | 4.942/4.960 ms; a etapa seguinte já começa falando     |
-| Pausa congela anel e grifo; retomar volta ao `start` da palavra                       | retomou em 0,980 s para o `start` 0,98                 |
-| Avançar com a voz pausada leva a seguinte ao modo sem voz                             | ok                                                     |
-| "Próximo" no meio da fala interrompe o áudio e avança                                 | ok                                                     |
-| `play()` rejeitado cai no modo sem voz sem quebrar o fluxo                            | ok, com o aviso no console                             |
-| Boca só com palavra ativa e no padrão durante o modo sem voz                          | 806 quadros, 0 divergências, 0 quadros falando sem voz |
+| Verificação                                                                                   | Resultado                                              |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Começa sem voz: texto branco, nenhum áudio, anel avançando                                    | ok                                                     |
+| Sem voz, avanço em `max(duração × 2,5; 6 s)`                                                  | ver a seção 7                                          |
+| Alto-falante liga a voz: áudio certo, texto cinza, spans = manifesto, anel reiniciado         | ok                                                     |
+| Com voz, avanço em duração + 400 ms                                                           | 4.942/4.960 ms; a etapa seguinte já começa falando     |
+| Pausa deixa o texto branco, congela o anel e desliga o avanço; ligar de novo recomeça do zero | ok                                                     |
+| Avançar com a voz pausada leva a seguinte ao modo sem voz                                     | ok                                                     |
+| "Próximo" no meio da fala interrompe o áudio e avança                                         | ok                                                     |
+| `play()` rejeitado cai no modo sem voz sem quebrar o fluxo                                    | ok, com o aviso no console                             |
+| Boca só com palavra ativa e no padrão durante o modo sem voz                                  | 806 quadros, 0 divergências, 0 quadros falando sem voz |
 
 ## 7. Ajustes finais (etapa 3, destaques, timer, vídeo da etapa 9)
 
@@ -91,6 +91,6 @@ Divergências e decisões (também no README):
 
 - **Plano B de marcação:** nenhuma etapa caiu nele.
 - **Filtro:** correlação de 0,99994, não 1,0 (ver a seção 2). Para confirmar a igualdade exata, gere de novo numa máquina com o ffmpeg do Homebrew.
-- **Vídeos das etapas 6 e 7:** os pôsteres são do Figma, mas os dois tocam o mesmo vídeo de placeholder.
+- **Vídeos das etapas 6 e 7:** o topo agora é um thumb em vídeo próprio de cada etapa; o "Play" ainda abre o mesmo vídeo de placeholder nas duas.
 - **Etapa 9:** o topo do tooltip agora é um vídeo em loop (`public/video/waz-nexo.webm` / `.mp4`, capa `waz-nexo-poster.jpg`).
 - **Navegadores:** testado no Chrome. Safari e Firefox seguem pendentes.

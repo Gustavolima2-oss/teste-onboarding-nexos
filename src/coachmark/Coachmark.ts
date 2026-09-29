@@ -85,7 +85,7 @@ export type StepLayout = {
 };
 
 /** O ícone mostra a AÇÃO do clique: alto-falante (voz desligada ou pausada) ou pausa (tocando). */
-export type VoiceButtonState = 'off' | 'playing' | 'paused';
+export type VoiceButtonState = 'off' | 'playing';
 
 /** Botões do Figma: "Próximo" 87×40 e "Finalizar" 89×40 (etapa 9). */
 const NEXT_SIZE = { next: { w: 87, h: 40 }, final: { w: 89, h: 40 } };
@@ -369,15 +369,14 @@ export class Coachmark {
   }
 
   /**
-   * Estado do alto-falante, sempre mostrando a ação do clique: 'off' (voz desligada:
-   * alto-falante, "Ouvir o Nexo"), 'playing' (pausa, "Pausar", aria-pressed) ou 'paused'
-   * (alto-falante, "Continuar ouvindo").
+   * Estado do alto-falante, sempre mostrando a ação do clique: 'off' (voz desligada ou
+   * pausada: alto-falante, "Ouvir o Nexo") ou 'playing' (pausa, "Pausar", aria-pressed).
    */
   setVoiceState(state: VoiceButtonState): void {
     if (state === this.voiceState) return;
     this.voiceState = state;
     const b = this.audioButton;
-    const label = { off: 'Ouvir o Nexo', playing: 'Pausar', paused: 'Continuar ouvindo' }[state];
+    const label = { off: 'Ouvir o Nexo', playing: 'Pausar' }[state];
     b.setAttribute('aria-pressed', String(state === 'playing'));
     b.setAttribute('aria-label', label);
     b.title = label;
@@ -424,7 +423,8 @@ export class Coachmark {
    */
   startLoop(): void {
     const step = this.opts.steps[this.index];
-    const media = step?.tooltip.kind === 'loop' ? step.tooltip.media : undefined;
+    // Thumb em loop: kind 'loop' (etapa 9) e 'video' com `sources` (etapas 6 e 7, sob o Play).
+    const media = step?.tooltip.media;
     if (!media?.sources?.length || this.loopVideo || prefersReducedMotion()) return;
     const v = document.createElement('video');
     v.className = 'coach-loop';
@@ -456,7 +456,10 @@ export class Coachmark {
     sources[sources.length - 1]?.addEventListener('error', fail);
     v.addEventListener('error', fail);
     v.append(...sources);
-    this.mediaEl.append(v);
+    // Logo acima da capa e abaixo do sombreado, do "Play" e do "×" (que ficam por cima).
+    const poster = this.mediaEl.querySelector('.coach-poster');
+    if (poster) poster.after(v);
+    else this.mediaEl.prepend(v);
     this.loopVideo = v;
     void v.play().catch(() => undefined);
   }
@@ -718,11 +721,12 @@ export class Coachmark {
     v.playsInline = true;
     v.muted = true;
     v.setAttribute('aria-label', step?.tooltip.media?.alt ?? 'Vídeo');
-    v.addEventListener('ended', () => this.stopMedia());
+    v.addEventListener('ended', () => this.stopFullVideo());
+    this.loopVideo?.pause(); // o vídeo completo toma o lugar do thumb
     this.mediaEl.classList.add('is-playing');
     this.mediaEl.prepend(v);
     this.video = v;
-    void v.play().catch(() => this.stopMedia());
+    void v.play().catch(() => this.stopFullVideo());
     this.opts.onVideo?.(true);
   }
 
@@ -733,12 +737,20 @@ export class Coachmark {
       this.loopVideo.remove();
       this.loopVideo = null;
     }
+    this.stopFullVideo();
+  }
+
+  /** Fecha só o vídeo do "Play" (fim ou erro) e devolve o thumb em loop. */
+  private stopFullVideo(): void {
     if (!this.video) return;
     this.video.pause();
     this.video.remove();
     this.video = null;
     this.mediaEl.classList.remove('is-playing');
     this.opts.onVideo?.(false);
+    if (this.loopVideo && !this.tooltip.hidden && !document.hidden) {
+      void this.loopVideo.play().catch(() => undefined);
+    }
   }
 
   // ---------- geometria ----------
@@ -969,7 +981,7 @@ export class Coachmark {
     const v = this.loopVideo;
     if (!v) return;
     if (document.hidden) v.pause();
-    else if (!this.tooltip.hidden) void v.play().catch(() => undefined);
+    else if (!this.tooltip.hidden && !this.video) void v.play().catch(() => undefined);
   };
 
   private handleResize = (): void => {

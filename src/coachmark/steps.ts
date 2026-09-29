@@ -73,7 +73,10 @@ export type Step = {
       poster: string;
       alt: string;
       src?: string;
-      /** 'loop': fontes em ordem de preferência (WebM primeiro, MP4 de alternativa). */
+      /**
+       * Thumb em vídeo mudo em loop ('loop' e 'video'): fontes em ordem de preferência
+       * (WebM primeiro, MP4 de alternativa). A capa (`poster`) fica se falhar.
+       */
       sources?: { src: string; type: string }[];
     };
   };
@@ -179,8 +182,13 @@ export const STEPS: Step[] = [
       placement: 'right',
       offset: { x: 22, y: 0 },
       media: {
-        poster: asset('images/onboarding/poster-base.jpg'),
+        poster: asset('video/base-conhecimento-poster.jpg'),
         alt: 'Vídeo: Base de conhecimento',
+        // Thumb em loop sob o "Play"; o Play abre o vídeo completo (`src`).
+        sources: [
+          { src: asset('video/base-conhecimento.webm'), type: 'video/webm' },
+          { src: asset('video/base-conhecimento.mp4'), type: 'video/mp4' },
+        ],
         src: asset('video/seu-negocio.webm'),
       },
     },
@@ -200,8 +208,12 @@ export const STEPS: Step[] = [
       placement: 'right',
       offset: { x: 16, y: 0 },
       media: {
-        poster: asset('images/onboarding/poster-produtos.jpg'),
+        poster: asset('video/produtos-servicos-poster.jpg'),
         alt: 'Vídeo: Produtos e Serviços',
+        sources: [
+          { src: asset('video/produtos-servicos.webm'), type: 'video/webm' },
+          { src: asset('video/produtos-servicos.mp4'), type: 'video/mp4' },
+        ],
         src: asset('video/seu-negocio.webm'),
       },
     },

@@ -16,7 +16,7 @@ Protótipo do onboarding do produto. O mascote 3D **Nexo** guia o usuário por *
 | Sair do tour              | **Esc**                                                                                                                                                                                                             |
 | Reiniciar do começo       | **R**                                                                                                                                                                                                               |
 | Ir direto a uma etapa     | **1** a **9**                                                                                                                                                                                                       |
-| Ouvir / pausar a voz      | Ícone no tooltip, ou **Espaço**: liga a voz, pausa e retoma (do início da palavra em que parou)                                                                                                                     |
+| Ouvir / pausar a voz      | Ícone no tooltip, ou **Espaço**: liga a voz; pausar desliga (texto todo branco, sem avanço automático) e ligar de novo recomeça a fala do início                                                                    |
 | Vídeo (etapas 6 e 7)      | Botão **Play** no tooltip (pausa a fala)                                                                                                                                                                            |
 
 O **Tab** circula dentro do tooltip ("Voltar", áudio e "Próximo"). Com `prefers-reduced-motion`, o Nexo não voa: ele troca de lugar com um fade.
@@ -79,8 +79,10 @@ python3 nexo-voice/build_voices.py       # a partir da raiz do app
 
 - **Progresso:** o Figma não preenche o botão; ele desenha um anel em gradiente (`#E49876` → `#FFC846` 44% → `#FFD8C7`, da esquerda para a direita) colado à pílula do "Próximo". O anel começa no meio da lateral esquerda e cresce em sentido horário, de 0 a 100% ao longo do timer ou do áudio. Ligar a voz reinicia o anel do zero.
 - **Bolinhas:** 9, acumulativas (o Figma ainda mostra 7, e nenhuma na última etapa).
-- **Ícone:** mostra a ação do clique. Alto-falante do Figma com a voz desligada ("Ouvir o Nexo") ou pausada ("Continuar ouvindo"); `Pause` do Phosphor, no mesmo tamanho e cor, enquanto a voz toca ("Pausar", `aria-pressed="true"`). Troca por crossfade de 120 ms.
-- **Espaço** com o foco no tooltip liga, pausa e retoma a voz.
+- **Ícone:** mostra a ação do clique. Alto-falante do Figma com a voz desligada ou pausada ("Ouvir o Nexo"); `Pause` do Phosphor, no mesmo tamanho e cor, enquanto a voz toca ("Pausar", `aria-pressed="true"`). Troca por crossfade de 120 ms.
+- **Espaço** com o foco no tooltip liga e pausa a voz.
+- **Pausar vale como desligar:** o áudio para, o texto inteiro fica branco, a boca volta ao padrão, o ícone volta a ser o alto-falante e o anel congela; nada avança sozinho nessa etapa. Ligar de novo recomeça a fala do zero (texto cinza, anel em 0%). As etapas seguintes entram sem voz até o usuário ligar de novo.
+- **Thumbs em vídeo** nas etapas 6 e 7 (`base-conhecimento` e `produtos-servicos`, WebM + MP4 + capa), no mesmo padrão da etapa 9; o "Play" e o "×" continuam por cima e o Play ainda abre o vídeo completo (pausando o thumb).
 - **Etapa 1** não tem "Voltar" (fica invisível, ocupando o lugar); a **etapa 9** usa "Finalizar" (89×40), como no Figma.
 - **Emoji** solto (🧠, etapa 6) acende junto com a palavra anterior e não mexe a boca.
 - **Vídeo** (etapas 6 e 7): o Play pausa a fala ou o timer; sem voz, o timer volta a correr quando o vídeo para.

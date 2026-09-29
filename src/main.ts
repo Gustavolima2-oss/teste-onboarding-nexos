@@ -240,13 +240,8 @@ async function start(): Promise<void> {
   const voice = new VoicePlayer({
     onFrame: (f) => {
       coach.setVoiceProgress(f.progress, f.spoken);
-      coach.setVoiceState(
-        f.voice && f.mode === 'playing'
-          ? 'playing'
-          : f.voice && f.mode === 'paused'
-            ? 'paused'
-            : 'off',
-      );
+      // Tocando: ícone de pausa. Desligada, pausada ou terminada: alto-falante.
+      coach.setVoiceState(f.voice && f.mode === 'playing' ? 'playing' : 'off');
       // Boca: só com voz e palavra ativa; entre palavras, na pausa, no fim e sem voz, sorriso
       // no mesmo quadro.
       nexo.speakLevel(f.voice && f.speaking ? (f.level ?? 'auto') : null);
@@ -304,10 +299,10 @@ async function start(): Promise<void> {
     },
     onVoiceToggle: () => {
       if (busy) return;
+      // Tocando: pausar vale como desligar (texto branco, anel congelado, sem avanço).
       if (voice.isVoice && voice.state === 'playing') voice.pause();
-      else if (voice.isVoice && voice.isPaused) void voice.resume();
       else {
-        // Sem voz (ou fala já terminada): liga a voz e fala a etapa do início, anel do zero.
+        // Sem voz, pausada ou terminada: liga a voz e fala a etapa do início, anel do zero.
         voiceOn = true;
         cancelAutoAdvance();
         coach.setActionPulse(false); // na etapa de ação, volta a pulsar quando a fala acabar
@@ -356,7 +351,8 @@ async function start(): Promise<void> {
     const next = STEPS[STEPS.indexOf(step) + 1];
     if (next) voice.preload(next.voice);
     if (step.tooltip.kind === 'preview') coach.startDemo();
-    if (step.tooltip.kind === 'loop') coach.startLoop();
+    // Thumb em vídeo (etapas 6, 7 e 9): começa com o tooltip já na tela.
+    if (step.tooltip.media?.sources) coach.startLoop();
   }
 
   // ---------- ação da etapa (advanceOn 'action') ----------

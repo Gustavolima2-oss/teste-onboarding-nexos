@@ -139,7 +139,7 @@ Os valores finais são constantes comentadas em [nexoMaterial.ts](../src/nexo/ne
   - A fala são 5 barras em degraus que trocam a cada 70–120 ms, com pulsos nos olhos.
   - Só com a voz ligada e uma palavra ativa, as barras seguem o volume (RMS do `AnalyserNode`, 5 degraus; 3 com movimento reduzido). Entre palavras, na pausa, no fim e em todo o modo sem voz, a boca fica no sorriso, trocando no mesmo quadro.
 - **Olhar** ([NexoLook.ts](../src/nexo/NexoLook.ts)): o yaw e o pitch são calculados **relativos à direção do tooltip**, limitados a ±28° e ±16°, com constante de tempo de 120 ms. Os olhos chegam antes do corpo. Com o mouse parado por 2 s, o olhar volta ao tooltip em ~600 ms.
-- **Voz:** MP3 gravados por etapa (ver o README, seção "Voz do Nexo"). Desligada por padrão; o alto-falante liga, pausa e retoma (Espaço também). Aba em segundo plano pausa fala e timer; ao voltar, retoma (com voz, do início da palavra).
+- **Voz:** MP3 gravados por etapa (ver o README, seção "Voz do Nexo"). Desligada por padrão; o alto-falante liga e pausa (Espaço também). Pausar desliga: texto todo branco, anel congelado e sem avanço; ligar de novo recomeça do zero. Aba em segundo plano pausa fala e timer; ao voltar, retoma (com voz, do início da palavra).
 
 ## Acessibilidade, movimento reduzido e performance
 

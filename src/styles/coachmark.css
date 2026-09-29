@@ -399,6 +399,7 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
 }
 
 .coach-media.is-playing .coach-poster,
+.coach-media.is-playing .coach-loop,
 .coach-media.is-playing .coach-poster-shade,
 .coach-media.is-playing .coach-play {
   display: none;
