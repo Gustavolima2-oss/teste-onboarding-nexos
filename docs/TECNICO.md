@@ -20,21 +20,22 @@ Complemento do [README](../README.md) para quem vai manter ou integrar o código
 | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `npm run dev` / `build` / `preview`                           | Vite. O build separa o three.js num chunk carregado depois da home.                                               |
 | `npm run lint`                                                | ESLint (TypeScript `strict`, sem `!`).                                                                            |
-| `npm test`                                                    | Suíte do onboarding, com 67 verificações (ver abaixo). Precisa do dev server em `:5199` (`npx vite --port 5199`). |
-| `npm run checkpoint`                                          | Prints das 7 etapas em 1440×900 e 1920×1080 (DPR 2), mais `posicoes.json`.                                        |
+| `npm test`                                                    | Suíte do onboarding, com 93 verificações (ver abaixo). Precisa do dev server em `:5199` (`npx vite --port 5199`). |
+| `npm run checkpoint`                                          | Prints das etapas em 1440×900 e 1920×1080 (DPR 2), mais `posicoes.json`.                                          |
 | `npm run record -- <flow\|talk\|look\|gestures> <saida.webm>` | Vídeos de verificação a 60 fps.                                                                                   |
 | `npm run optimize:glb`                                        | Gera `public/models/nexo.glb` a partir de `assets-src/nexo-3d.glb` (fora do repositório).                         |
 | `npm run measure:png`                                         | Mede a caixa visível e o corpo do PNG do Nexo no Figma e grava `scripts/png-bbox.json`.                           |
 
 O `npm test` abre o Chrome instalado via `playwright-core`. Ele cobre:
 
-- as 7 etapas, com rota, bolinhas, foco e o mesmo canvas do Nexo;
+- as 9 etapas, com rota, bolinhas, foco e o mesmo canvas do Nexo;
 - ida e volta 1→7→1 (Próximo, →, Voltar e ←): em cada etapa, rota, bolinhas, alvo sem resto de destaque, favorito "Conversas" na sidebar só da 4 em diante, botões, foco, Nexo no ponto certo, sem sonda nem tela duplicada; botões desabilitados durante o voo; rodapé igual em todas as etapas;
 - alvo navegável (cursor, hover, clique avança nas etapas 1, 4 e 5; na 7 o clique não navega) e a tela limpa nas trocas entre telas (overlay a 0, ~600 ms de tela nítida, overlay só volta depois do voo; na mesma tela o overlay não pisca);
 - o tooltip nunca aparecendo durante o voo, e o FPS no voo;
-- fim do tour, persistência, Tab preso no tooltip, `:focus-visible` e Esc em cada uma das 7 etapas;
+- fim do tour, persistência, Tab preso no tooltip, `:focus-visible` e Esc em cada uma das 9 etapas;
 - movimento reduzido e fallback sem WebGL;
-- prévia animada, vídeo e narração;
+- prévia animada e vídeo;
+- voz gravada: áudio e spans por etapa, avanço automático em duração + 400 ms, pausa e retomada no início da palavra, "Próximo" interrompendo a fala, modo silencioso (autoplay bloqueado) e boca sincronizada com a palavra ativa;
 - memória liberada no `destroy()`.
 
 ## Estrutura
@@ -45,7 +46,7 @@ src/
   app/                    router.ts (hash + sonda de medição), sidebar.ts (persistente), state.ts (favoritos)
   screens/                home.ts, ferramentas.ts, seuNegocio.ts (mount/unmount), types.ts, index.ts
   coachmark/
-    steps.ts              configuração das 7 etapas (textos, alvos, offsets do Figma, gestos)
+    steps.ts              configuração das 9 etapas (voz, alvos, offsets do Figma, gestos)
     Coachmark.ts          overlay com blur, destaque, tooltip (text/preview/video), bolinhas, áudio, teclado
     previewDemo.ts        demonstração animada do cursor (etapa 3)
     placement.ts          posicionamento com prioridade (lado do Figma → acima → clamp)
@@ -56,7 +57,10 @@ src/
     gestures.ts           gestos de corpo inteiro (inclinação, giro, recuo)
     NexoFace.ts           rosto em canvas (decal): expressões e fala de robô
     NexoLook.ts           olhar seguindo o mouse
-    narration.ts          Web Speech API + bipes
+    narration.ts          Web Speech API (legado: só NexoGuide.talk)
+  voice/
+    voice.ts              VoicePlayer: relógio da fala (currentTime), grifo, anel, pausa, modo silencioso, AnalyserNode
+    voiceManifest.json    texto, duração e tempo de cada palavra (gerado por nexo-voice/)
     flight.ts             trajetória em arco, banking e envelope do voo
     nexoMaterial.ts       material, máscaras e TODOS os valores de render (constantes nomeadas)
     nexoModels.ts         limites de busca da tela do rosto
@@ -104,7 +108,8 @@ assets-src/               originais: nexo-3d.glb (fora do repositório) e o PNG 
 - **Um dono por eixo:** durante o voo, posição, escala, banking (Z) e yaw pertencem ao arco; durante o gesto, o olhar fica congelado e a flutuação desligada. A flutuação (±3 px em 3 s, sem rotação) e o olhar voltam quando o gesto termina. Nenhum movimento usa `back`/`elastic`.
 - **Entre telas:** a tela seguinte é montada numa sonda invisível para medir o destino antes da decolagem. A troca real (fade out 200 ms, montagem, fade in 250 ms) acontece por baixo do voo.
 - **Voltar:** a mesma troca, no sentido inverso (ver "Navegação nos dois sentidos").
-- **Etapas especiais:** na 3, a demonstração do cursor começa depois do tooltip. Na 6, o Nexo fica em `think` e passa a `listen` enquanto o vídeo toca. Na 7, acena outra vez depois da fala.
+- **Fala:** começa quando o tooltip termina de entrar. 400 ms depois do fim do áudio, o fluxo avança com a mesma transição do clique (na última etapa, encerra). Toda troca (Próximo, Voltar, alvo, avanço automático, Esc) para o áudio e zera grifo, anel e boca antes de qualquer animação. O áudio da etapa seguinte é pré-carregado.
+- **Etapas especiais:** na 3, a demonstração do cursor começa depois do tooltip. Nas 6 e 7, o Play do vídeo pausa a fala e o Nexo passa a `listen`.
 - **Fim:** no "Próximo" da etapa 7, o tooltip sai, o Nexo faz `bye` e voa para fora (900 ms), o overlay some e o foco vai para a página. O Esc encerra a qualquer momento, pela mesma saída sem o gesto.
 
 ## Render e modelo
@@ -132,9 +137,9 @@ Os valores finais são constantes comentadas em [nexoMaterial.ts](../src/nexo/ne
   - `think`: inclina 8° de lado e olha para baixo.
 - **Rosto** ([NexoFace.ts](../src/nexo/NexoFace.ts)): um canvas de 1024×768 vira um `DecalGeometry` sobre a tela, detectada pelos texels escuros da textura, e cobre o rosto pintado. O visual segue o PNG de referência: bezel roxo com cantos bem arredondados, fundo marrom-escuro translúcido, scanlines finas, reflexo especular no topo e pixels laranja de cantos arredondados com glow. Os olhos são retângulos verticais e a boca é estreita. As células saem quadradas porque a altura em px é corrigida pelo aspecto da caixa do decal (`setBoxAspect`).
   - A fala são 5 barras em degraus que trocam a cada 70–120 ms, com pulsos nos olhos.
-  - Com narração, as barras pulsam por palavra (`onboundary`). Sem narração, a fala dura ~60 ms por caractere (1,2–4 s).
+  - Com a voz gravada, as barras seguem o volume (RMS do `AnalyserNode`, 5 degraus; 3 com movimento reduzido) e só aparecem com uma palavra ativa: entre palavras, na pausa e no fim, a boca volta ao sorriso no mesmo quadro. No modo silencioso, usa o padrão pseudoaleatório.
 - **Olhar** ([NexoLook.ts](../src/nexo/NexoLook.ts)): o yaw e o pitch são calculados **relativos à direção do tooltip**, limitados a ±28° e ±16°, com constante de tempo de 120 ms. Os olhos chegam antes do corpo. Com o mouse parado por 2 s, o olhar volta ao tooltip em ~600 ms.
-- **Narração:** Web Speech API com voz pt-BR, desligada por padrão; a preferência fica em `localStorage`. Sem voz disponível, o botão fica desabilitado com uma explicação. Os bipes são quadrados, curtos e baixos (a cada 3 palavras, só com a narração ligada).
+- **Voz:** MP3 gravados por etapa (ver o README, seção "Voz do Nexo"). O alto-falante pausa e retoma (Espaço também); no modo silencioso, liga o som a partir da palavra atual. Aba em segundo plano pausa e, ao voltar, retoma do início da palavra.
 
 ## Acessibilidade, movimento reduzido e performance
 

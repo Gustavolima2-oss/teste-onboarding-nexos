@@ -44,7 +44,7 @@ const TOOLTIP_IN = { duration: 0.25, offset: -8, scale: 0.96 };
 /** Saída do tooltip: fade + escala 0,98. */
 const TOOLTIP_OUT = { duration: 0.1, scale: 0.98 };
 /** Total de bolinhas (o Figma varia entre 5 e 7; padronizado em 7). */
-export const DOTS = 7;
+export const DOTS = 9;
 
 const getDim = (): number =>
   Number(document.documentElement.style.getPropertyValue('--coach-dim') || 1);
@@ -62,8 +62,8 @@ export type CoachmarkOptions = {
   /** "Voltar" (a partir da etapa 2). */
   onBack: (index: number) => void;
   onClose: () => void;
-  /** Liga/desliga a narração (botão de alto-falante). */
-  onAudioToggle?: (on: boolean) => void;
+  /** Alto-falante (ou Espaço no tooltip): pausa/retoma a fala, ou liga o som no modo silencioso. */
+  onVoiceToggle?: () => void;
   /** Vídeo do tooltip começou/parou. */
   onVideo?: (playing: boolean) => void;
   /** Extensão da silhueta do Nexo relativa ao centro do corpo (px). */
@@ -82,17 +82,26 @@ export type StepLayout = {
   nexoPlacement: Placement;
 };
 
-const speakerIcon = (on: boolean) =>
-  on
-    ? `<img src="${asset('images/onboarding/speaker-high.svg')}" alt="" width="18" height="18" />`
-    : `<img src="${asset('images/onboarding/speaker-high.svg')}" alt="" width="18" height="18" class="is-muted" />`;
+export type VoiceButtonState = 'playing' | 'paused' | 'muted';
+
+/** Botões do Figma: "Próximo" 87×40 e "Finalizar" 89×40 (etapa 9). */
+const NEXT_SIZE = { next: { w: 87, h: 40 }, final: { w: 89, h: 40 } };
+/** Espessura do anel de progresso ("Subtract", 2483:5698). */
+const RING_STROKE = 3.5;
+
+const voiceIcon = (state: VoiceButtonState) =>
+  state === 'paused'
+    ? `<img src="${asset('images/onboarding/pause.svg')}" alt="" width="18" height="18" />`
+    : `<img src="${asset('images/onboarding/speaker-high.svg')}" alt="" width="18" height="18"${state === 'muted' ? ' class="is-muted"' : ''} />`;
 
 export class Coachmark {
   readonly overlay: HTMLDivElement;
   readonly tooltip: HTMLDivElement;
   private readonly mediaEl: HTMLDivElement;
-  private readonly titleEl: HTMLHeadingElement;
-  private readonly bodyEl: HTMLDivElement;
+  private readonly sayEl: HTMLParagraphElement;
+  private readonly srEl: HTMLSpanElement;
+  private readonly ringPath: SVGPathElement;
+  private readonly ringSvg: SVGSVGElement;
   private readonly dotsEl: HTMLDivElement;
   private readonly audioButton: HTMLButtonElement;
   readonly nextButton: HTMLButtonElement;
@@ -113,7 +122,13 @@ export class Coachmark {
   private opened = false;
   private demo: PreviewDemo | null = null;
   private video: HTMLVideoElement | null = null;
-  private audio = { on: false, available: true };
+  private voiceState: VoiceButtonState | null = null;
+  /** Palavras do texto falado (um <span> por palavra, na ordem do manifesto). */
+  private wordEls: HTMLSpanElement[] = [];
+  private spokenShown = -1;
+  private progressShown = -1;
+  /** Movimento reduzido: o gradiente anda em degraus de 10%, sem animação suave. */
+  private readonly reducedProgress = prefersReducedMotion();
 
   constructor(private readonly opts: CoachmarkOptions) {
     this.overlay = document.createElement('div');
@@ -123,20 +138,31 @@ export class Coachmark {
     this.tooltip.className = 'coach-tooltip';
     this.tooltip.setAttribute('role', 'dialog');
     this.tooltip.setAttribute('aria-modal', 'true');
-    this.tooltip.setAttribute('aria-labelledby', 'coach-title');
-    this.tooltip.setAttribute('aria-describedby', 'coach-body');
+    this.tooltip.setAttribute('aria-describedby', 'coach-say-sr');
     this.tooltip.hidden = true;
     this.tooltip.innerHTML = `
       <div class="coach-media" hidden></div>
       <div class="coach-head">
-        <h2 id="coach-title" class="coach-title" aria-live="polite"></h2>
+        <p class="coach-say" aria-hidden="true"></p>
+        <span id="coach-say-sr" class="sr-only" aria-live="polite"></span>
         <button type="button" class="coach-audio" aria-pressed="false"></button>
       </div>
-      <div id="coach-body" class="coach-body"></div>
       <div class="coach-footer">
         <button type="button" class="coach-back">Voltar</button>
         <div class="coach-dots" role="img">${'<span></span>'.repeat(DOTS)}</div>
-        <button type="button" class="coach-next">Próximo</button>
+        <span class="coach-next-wrap">
+          <button type="button" class="coach-next">Próximo</button>
+          <svg class="coach-ring" aria-hidden="true" focusable="false">
+            <defs>
+              <linearGradient id="coach-ring-grad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="94" y2="0">
+                <stop offset="0" stop-color="#E49876" />
+                <stop offset="0.442308" stop-color="#FFC846" />
+                <stop offset="1" stop-color="#FFD8C7" />
+              </linearGradient>
+            </defs>
+            <path pathLength="100" stroke="url(#coach-ring-grad)" />
+          </svg>
+        </span>
       </div>`;
     const q = <T extends Element>(sel: string): T => {
       const el = this.tooltip.querySelector(sel);
@@ -144,13 +170,15 @@ export class Coachmark {
       return el as T;
     };
     this.mediaEl = q<HTMLDivElement>('.coach-media');
-    this.titleEl = q<HTMLHeadingElement>('.coach-title');
-    this.bodyEl = q<HTMLDivElement>('.coach-body');
+    this.sayEl = q<HTMLParagraphElement>('.coach-say');
+    this.srEl = q<HTMLSpanElement>('#coach-say-sr');
+    this.ringSvg = q<SVGSVGElement>('.coach-ring');
+    this.ringPath = q<SVGPathElement>('.coach-ring path');
     this.dotsEl = q<HTMLDivElement>('.coach-dots');
     this.audioButton = q<HTMLButtonElement>('.coach-audio');
     this.nextButton = q<HTMLButtonElement>('.coach-next');
     this.backButton = q<HTMLButtonElement>('.coach-back');
-    this.setAudio(false, true);
+    this.setVoiceState('playing');
   }
 
   get currentIndex(): number {
@@ -317,27 +345,44 @@ export class Coachmark {
     this.backButton.disabled = busy || this.index <= 0;
   }
 
-  /** Estado do botão de narração (desabilitado se não houver voz). */
-  setAudio(on: boolean, available: boolean): void {
-    this.audio = { on: on && available, available };
+  /**
+   * Estado do alto-falante: 'playing' (falando; clicar pausa), 'paused' (clicar retoma)
+   * ou 'muted' (modo silencioso por autoplay bloqueado; clicar liga o som, com pulso).
+   */
+  setVoiceState(state: VoiceButtonState): void {
+    if (state === this.voiceState) return;
+    this.voiceState = state;
     const b = this.audioButton;
-    b.disabled = !available;
-    b.setAttribute('aria-pressed', String(this.audio.on));
-    b.setAttribute(
-      'aria-label',
-      available
-        ? this.audio.on
-          ? 'Desligar narração'
-          : 'Ligar narração'
-        : 'Narração indisponível',
-    );
-    b.title = available
-      ? this.audio.on
-        ? 'Narração ligada'
-        : 'Narração desligada'
-      : 'Narração indisponível: este navegador não tem voz de síntese instalada.';
-    b.innerHTML = speakerIcon(this.audio.on);
-    b.classList.toggle('is-on', this.audio.on);
+    const label = {
+      playing: 'Pausar a fala',
+      paused: 'Retomar a fala',
+      muted: 'Ligar o som da fala',
+    }[state];
+    b.setAttribute('aria-pressed', String(state === 'paused'));
+    b.setAttribute('aria-label', label);
+    b.title = label;
+    b.dataset.voice = state;
+    b.innerHTML = voiceIcon(state);
+  }
+
+  /**
+   * Grifo e gradiente da fala: `spoken` palavras ficam brancas (progressivo) e o
+   * "Próximo" preenche `progress` (0..1). Só mexe no que mudou.
+   */
+  setVoiceProgress(progress: number, spoken: number): void {
+    const p = Math.max(0, Math.min(1, progress));
+    const shown = this.reducedProgress ? Math.floor(p * 10) / 10 : p;
+    if (shown !== this.progressShown) {
+      this.progressShown = shown;
+      this.nextButton.style.setProperty('--coach-progress', String(shown));
+      // Anel do Figma ("Subtract"): contorno da pílula, do meio da lateral esquerda,
+      // em sentido horário, preenchido de 0 a 100% ao longo da fala.
+      this.ringPath.style.strokeDasharray = shown > 0 ? `${shown * 100} 100` : '0 100';
+    }
+    if (spoken !== this.spokenShown) {
+      this.spokenShown = spoken;
+      this.wordEls.forEach((el, i) => el.classList.toggle('is-spoken', i < spoken));
+    }
   }
 
   /** Começa a demonstração do cursor (etapa com tooltip de prévia). */
@@ -431,12 +476,68 @@ export class Coachmark {
 
   // ---------- conteúdo ----------
 
+  /**
+   * Texto falado: um <span> por palavra, na mesma divisão por espaços do manifesto.
+   * Entre frases, uma linha em branco (como no Figma). O texto inteiro fica para leitores
+   * de tela desde o início (o grifo é só visual: a versão em spans tem aria-hidden).
+   */
+  private renderWords(text: string): void {
+    const words = text.split(/\s+/).filter(Boolean);
+    this.sayEl.replaceChildren();
+    this.wordEls = words.map((w, i) => {
+      const span = document.createElement('span');
+      span.className = 'coach-say-word';
+      span.textContent = w;
+      this.sayEl.append(span);
+      const endsSentence = /[.!?]$/.test(w) && i < words.length - 1;
+      if (endsSentence) {
+        this.sayEl.append(document.createElement('br'), document.createElement('br'));
+      } else if (i < words.length - 1) {
+        this.sayEl.append(' ');
+      }
+      return span;
+    });
+    this.srEl.textContent = text;
+    this.spokenShown = -1;
+  }
+
+  /** Caminho do anel em volta do botão (w×h), com 3,5 px de espessura colado à borda. */
+  private drawRing({ w, h }: { w: number; h: number }): void {
+    const t = RING_STROKE;
+    const W = w + t;
+    const H = h + t;
+    const x0 = t / 2;
+    const y0 = t / 2;
+    const r = H / 2;
+    const cy = y0 + r;
+    this.ringSvg.setAttribute('width', String(w + 2 * t));
+    this.ringSvg.setAttribute('height', String(h + 2 * t));
+    this.ringSvg.setAttribute('viewBox', `0 0 ${w + 2 * t} ${h + 2 * t}`);
+    this.ringPath.setAttribute(
+      'd',
+      [
+        `M ${x0} ${cy}`,
+        `A ${r} ${r} 0 0 1 ${x0 + r} ${y0}`,
+        `H ${x0 + W - r}`,
+        `A ${r} ${r} 0 0 1 ${x0 + W - r} ${y0 + H}`,
+        `H ${x0 + r}`,
+        `A ${r} ${r} 0 0 1 ${x0} ${cy}`,
+      ].join(' '),
+    );
+    this.ringSvg.querySelector('linearGradient')?.setAttribute('x2', String(w + 2 * t));
+  }
+
   private fillContent(step: Step, index: number): void {
     const t = step.tooltip;
     this.tooltip.dataset.step = step.id;
     this.tooltip.dataset.kind = t.kind;
-    this.titleEl.textContent = t.title;
-    this.bodyEl.innerHTML = t.paragraphs.map((p) => `<p>${p}</p>`).join('');
+    this.tooltip.setAttribute('aria-label', `Etapa ${index + 1} de ${DOTS}`);
+    this.renderWords(step.text);
+    const last = index === this.opts.steps.length - 1;
+    this.nextButton.textContent = last ? 'Finalizar' : 'Próximo';
+    this.nextButton.classList.toggle('is-final', last);
+    this.drawRing(last ? NEXT_SIZE.final : NEXT_SIZE.next);
+    this.setVoiceProgress(0, 0);
     this.dotsEl.setAttribute('aria-label', `Etapa ${index + 1} de ${DOTS}`);
     this.dotsEl
       .querySelectorAll('span')
@@ -459,9 +560,11 @@ export class Coachmark {
     if (t.kind === 'preview') {
       this.mediaEl.innerHTML = previewMarkup() + close;
       this.demo = new PreviewDemo(this.mediaEl);
+    } else if (t.kind === 'image' && t.media) {
+      this.mediaEl.innerHTML = `<img class="coach-poster" src="${t.media.poster}" alt="${t.media.alt}" />`;
     } else if (t.kind === 'video' && t.media) {
       this.mediaEl.innerHTML = `
-        <img class="coach-poster" src="${t.media.poster}" alt="${t.media.caption ?? ''}" />
+        <img class="coach-poster" src="${t.media.poster}" alt="${t.media.alt}" />
         <span class="coach-poster-shade" aria-hidden="true"></span>
         <button type="button" class="coach-play"><img src="${asset('images/onboarding/play.svg')}" alt="" width="10" height="10" /><span>Play</span></button>
         ${close}`;
@@ -477,7 +580,7 @@ export class Coachmark {
     v.src = src;
     v.playsInline = true;
     v.muted = true;
-    v.setAttribute('aria-label', step?.tooltip.media?.caption ?? 'Vídeo');
+    v.setAttribute('aria-label', step?.tooltip.media?.alt ?? 'Vídeo');
     v.addEventListener('ended', () => this.stopMedia());
     this.mediaEl.classList.add('is-playing');
     this.mediaEl.prepend(v);
@@ -628,7 +731,7 @@ export class Coachmark {
     if (!btn || btn.disabled) return;
     if (btn === this.nextButton) this.opts.onNext(this.index);
     else if (btn === this.backButton) this.opts.onBack(this.index);
-    else if (btn === this.audioButton) this.opts.onAudioToggle?.(!this.audio.on);
+    else if (btn === this.audioButton) this.opts.onVoiceToggle?.();
     else if (btn.classList.contains('coach-close')) this.opts.onClose();
     else if (btn.classList.contains('coach-play')) this.playVideo();
   };
@@ -669,6 +772,12 @@ export class Coachmark {
         e.preventDefault();
         const btn = e.key === 'ArrowLeft' ? this.backButton : this.nextButton;
         if (!btn.disabled) btn.click();
+        return;
+      }
+      // Espaço (foco dentro do tooltip): pausa e retoma a fala.
+      if ((e.key === ' ' || e.code === 'Space') && active && this.tooltip.contains(active)) {
+        e.preventDefault();
+        if (!this.audioButton.disabled) this.opts.onVoiceToggle?.();
         return;
       }
       // Enter avança; num botão do tooltip (Voltar, áudio) ativa esse botão.

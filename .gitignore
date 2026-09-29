@@ -25,3 +25,6 @@ assets-src/*.glb
 
 # Prints e vídeos de conferência (~40 MB, gerados por npm run checkpoint / record)
 docs/checkpoints/
+
+# Áudio limpo intermediário do pipeline de voz
+nexo-voice/.clean/

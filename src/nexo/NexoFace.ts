@@ -62,6 +62,15 @@ export class NexoFace {
   private nextBlink = performance.now() + rand(...FACE_STYLE.blinkEvery);
   private bars = [1, 2, 3, 2, 1];
   private nextBars = 0;
+  /**
+   * Fala guiada pelo áudio: volume 0..1 lido do AnalyserNode a cada quadro, ou null
+   * para o padrão pseudoaleatório (modo silencioso, sem WebAudio).
+   */
+  private talkLevel: number | null = null;
+  /** Degraus da boca com o volume real (5; movimento reduzido usa 3). */
+  levelSteps = 5;
+  /** Altura de um degrau das barras, em células (3 degraus × 0,6 = 1,8 célula). */
+  private barUnit = 0.6;
   private eyeGlow = 1;
   private nextPulse = 0;
   private dirty = true;
@@ -101,6 +110,10 @@ export class NexoFace {
   setExpression(e: FaceExpression): void {
     if (e === this.expression) return;
     this.expression = e;
+    if (e !== 'talk') {
+      this.talkLevel = null;
+      this.barUnit = 0.6;
+    }
     if (e === 'blink') this.blinkUntil = performance.now() + FACE_STYLE.blinkMs;
     this.dirty = true; // troca em um único quadro
   }
@@ -112,6 +125,37 @@ export class NexoFace {
     if (Math.abs(nx - this.look.x) + Math.abs(ny - this.look.y) < 0.02) return;
     this.look = { x: nx, y: ny };
     this.dirty = true;
+  }
+
+  /**
+   * Boca pela fala gravada: `null` volta ao sorriso NA HORA (entre palavras, pausa, fim);
+   * um número (volume 0..1) mostra as barras em degraus; 'auto' usa o padrão
+   * pseudoaleatório (modo silencioso). A troca acontece no mesmo quadro.
+   */
+  setTalkLevel(level: number | 'auto' | null): void {
+    if (level === null) {
+      this.talkLevel = null;
+      if (this.expression === 'talk') this.setExpression('smile');
+      return;
+    }
+    if (level === 'auto') {
+      if (this.expression !== 'talk' || this.talkLevel !== null) this.nextBars = 0;
+      this.talkLevel = null;
+      this.barUnit = 0.6;
+      this.setExpression('talk');
+      return;
+    }
+    this.setExpression('talk');
+    this.talkLevel = level;
+    const steps = Math.max(1, this.levelSteps);
+    this.barUnit = 1.8 / steps;
+    // Degrau do centro pelo volume; as vizinhas um e dois degraus abaixo.
+    const q = Math.max(1, Math.min(steps, Math.ceil(level * steps)));
+    const next = [q - 2, q - 1, q, q - 1, q - 2].map((h) => Math.max(1, h));
+    if (next.some((h, i) => h !== this.bars[i])) {
+      this.bars = next;
+      this.dirty = true;
+    }
   }
 
   /** Pulso de fala por palavra (narração: onboundary). */
@@ -135,7 +179,7 @@ export class NexoFace {
       this.dirty = true;
     }
     if (this.expression === 'talk') {
-      if (now >= this.nextBars) {
+      if (this.talkLevel === null && now >= this.nextBars) {
         // Barras em degraus discretos (1 a 3), com variação aleatória; as do meio maiores.
         this.bars = this.bars.map((_, i) => {
           const center = i === 2 ? 1 : 0;
@@ -321,7 +365,7 @@ export class NexoFace {
     const y = 0.7;
     if (e === 'talk') {
       // Equalizador: 5 barras de 0,6 célula, alturas em degraus (0,6 / 1,2 / 1,8 células).
-      this.bars.forEach((h, i) => this.px(0.5 + (i - 2) * 0.05, y - 0.02, 0.62, 0.6 * h));
+      this.bars.forEach((h, i) => this.px(0.5 + (i - 2) * 0.05, y - 0.02, 0.62, this.barUnit * h));
       return;
     }
     if (e === 'listen') {

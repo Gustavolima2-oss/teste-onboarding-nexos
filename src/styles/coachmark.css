@@ -13,6 +13,8 @@
   --coach-text: #a5a5a5;
   --coach-dot: #525b5b;
   --coach-dot-on: #fdfdfd;
+  /* Palavra ainda não falada (2483:5619): branco a 30%. */
+  --coach-word-pending: rgba(255, 255, 255, 0.3);
 }
 
 .coach-overlay {
@@ -117,24 +119,29 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   display: none;
 }
 
+/* Com mídia (prévia, vídeo, imagem) no topo: ela encosta nas bordas, só pb 24. */
 .coach-tooltip[data-kind='preview'],
-.coach-tooltip[data-kind='video'] {
+.coach-tooltip[data-kind='video'],
+.coach-tooltip[data-kind='image'] {
   padding-top: 0;
 }
 
 .coach-head,
-.coach-body,
 .coach-footer {
   padding: 0 24px;
 }
 
+/* Linha do texto (2483:5619): frase de 287 px + alto-falante 18×18 à direita. */
 .coach-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
 }
 
-.coach-title {
+/* Texto falado: Inter SemiBold 16, branco; o que ainda não foi dito fica a 30%. */
+.coach-say {
+  width: 287px;
   margin: 0;
   font-size: 16px;
   font-weight: 600;
@@ -143,8 +150,30 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   color: var(--white);
 }
 
+.coach-say-word {
+  color: var(--coach-word-pending);
+  transition: color 80ms linear;
+}
+
+.coach-say-word.is-spoken {
+  color: var(--white);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .coach-audio {
   display: grid;
+  flex: none;
   place-items: center;
   width: 18px;
   height: 18px;
@@ -154,43 +183,36 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   cursor: pointer;
 }
 
-/* O SVG do Figma já tem opacidade 0,6 (estado padrão, narração desligada). */
-.coach-audio.is-on img {
-  filter: brightness(1.7);
+/* Modo silencioso (autoplay bloqueado): "sem som" com um pulso discreto. */
+.coach-audio[data-voice='muted'] img {
+  animation: coach-muted-pulse 1.6s ease-in-out infinite;
 }
 
-.coach-audio:disabled {
-  cursor: not-allowed;
-  opacity: 0.4;
+@keyframes coach-muted-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.9);
+  }
 }
 
-.coach-body {
-  font-size: 13px;
-  font-weight: 400;
-  line-height: normal;
-  color: var(--coach-text);
+@media (prefers-reduced-motion: reduce) {
+  .coach-audio[data-voice='muted'] img {
+    animation: none;
+    opacity: 0.6;
+  }
 }
 
-.coach-body p {
-  /* No Figma a caixa de texto tem 334 px (4 px além do padding direito de 24). */
-  width: 334px;
-  margin: 0;
-}
-
-/* No Figma os parágrafos são separados por uma linha vazia. */
-.coach-body p + p {
-  margin-top: 1lh;
-}
-
-.coach-body strong {
-  font-weight: 700;
-  color: var(--white);
-}
-
+/* Rodapé (2483:5697): 64 px de altura; Voltar | bolinhas | Próximo + anel. */
 .coach-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  height: 64px;
 }
 
 .coach-dots {
@@ -210,9 +232,16 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   background: var(--coach-dot-on);
 }
 
+.coach-next-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
 .coach-next {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 87px;
   height: 40px;
   padding: 12px 16px;
   border: 0;
@@ -223,7 +252,13 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   font-size: 14px;
   font-weight: var(--fw-medium);
   line-height: 1.2;
+  white-space: nowrap;
   cursor: pointer;
+}
+
+/* "Finalizar" (2483:6463): 89×40. */
+.coach-next.is-final {
+  width: 89px;
 }
 
 .coach-next:hover {
@@ -232,6 +267,23 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
 
 .coach-next:disabled {
   cursor: default;
+}
+
+/* Anel de progresso da fala ("Subtract", 2483:5698): 3,5 px colado à pílula,
+   gradiente linear #E49876 → #FFC846 (44%) → #FFD8C7, preenchido com a fala. */
+.coach-ring {
+  position: absolute;
+  left: -3.5px;
+  top: -3.5px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.coach-ring path {
+  fill: none;
+  stroke-width: 3.5;
+  stroke-linecap: butt;
+  stroke-dasharray: 0 100;
 }
 
 /* "Voltar" (2414:5165): 73×40, sem fundo, SF Pro Medium 14/1,2 branco. */

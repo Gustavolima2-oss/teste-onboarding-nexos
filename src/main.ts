@@ -20,7 +20,7 @@ import {
   type Step,
 } from './coachmark/steps';
 import type { Point } from './nexo/NexoGuide';
-import { Narrator } from './nexo/narration';
+import { VoicePlayer, installAudioUnlock } from './voice/voice';
 import { NexoDebug } from './debug/NexoDebug';
 import { prefersReducedMotion } from './utils/reducedMotion';
 
@@ -73,6 +73,8 @@ const CROSS_SCREEN = {
 const NEXO_RELAX = 0.1;
 
 const DONE_KEY = 'onboarding:done';
+/** Espera depois do fim da fala antes de avançar sozinho (s). */
+const AUTO_ADVANCE_DELAY_S = 0.4;
 /** Site de demonstração: tour sempre do início. */
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
 const SHORTCUTS = DEMO_MODE || import.meta.env.DEV;
@@ -219,8 +221,43 @@ async function start(): Promise<void> {
   let transition: gsap.core.Timeline | null = null;
   let current = initial;
   let closing = false;
-  let voiceAvailable = false;
-  const narrate = () => voiceAvailable && Narrator.enabled;
+  /** Avanço automático agendado (fim da fala + 400 ms). */
+  let autoAdvance: gsap.core.Tween | null = null;
+  const cancelAutoAdvance = () => {
+    autoAdvance?.kill();
+    autoAdvance = null;
+  };
+
+  // Voz gravada: o player publica grifo, gradiente e boca a cada quadro.
+  installAudioUnlock();
+  const voice = new VoicePlayer({
+    onFrame: (f) => {
+      coach.setVoiceProgress(f.progress, f.spoken);
+      coach.setVoiceState(f.silent ? 'muted' : f.mode === 'paused' ? 'paused' : 'playing');
+      // Boca: fala só com palavra ativa; entre palavras, pausa e fim, sorriso no mesmo quadro.
+      nexo.speakLevel(f.speaking ? (f.level ?? 'auto') : null);
+    },
+    onEnd: (id) => {
+      const step = STEPS[current];
+      if (busy || closing || !step || step.voice !== id) return;
+      cancelAutoAdvance();
+      autoAdvance = gsap.delayedCall(AUTO_ADVANCE_DELAY_S, () => {
+        autoAdvance = null;
+        if (busy || closing || STEPS[current]?.voice !== id) return;
+        // Mesma transição do clique em "Próximo" (na última etapa, encerra o tour).
+        if (current >= STEPS.length - 1) void finish(true);
+        else void go(current, current + 1);
+      });
+    },
+  });
+  nexo.useVoice(voice);
+  /** Para a fala e zera grifo, gradiente e boca, antes de qualquer outra animação. */
+  const silence = () => {
+    cancelAutoAdvance();
+    voice.stop();
+    coach.setVoiceProgress(0, 0);
+    nexo.speakLevel(null);
+  };
 
   const coach: Coachmark = new Coachmark({
     steps: STEPS,
@@ -241,17 +278,18 @@ async function start(): Promise<void> {
       void go(index, index - 1);
     },
     onClose: () => void finish(false),
-    onAudioToggle: (on) => {
-      Narrator.enabled = on;
-      coach.setAudio(on, voiceAvailable);
-      const step = STEPS[current];
-      if (!on) nexo.stopTalking();
-      else if (step && !busy) void nexo.talk({ text: step.nexo.speech, narrate: true });
+    onVoiceToggle: () => {
+      if (busy) return;
+      if (voice.isSilent) void voice.enableSound();
+      else if (voice.isPaused) void voice.resume();
+      else if (autoAdvance)
+        cancelAutoAdvance(); // já terminou: fica na etapa
+      else voice.pause();
     },
     onVideo: (playing) => {
       const layout = coach.layout;
       if (playing) {
-        nexo.stopTalking();
+        voice.pause();
         void nexo.gesture('idle');
         nexo.setExpression('listen');
         if (layout) nexo.lookAt(tooltipCenter(layout));
@@ -261,12 +299,10 @@ async function start(): Promise<void> {
       }
     },
   });
-  void Narrator.ready().then((ok) => {
-    voiceAvailable = ok;
-    coach.setAudio(Narrator.enabled, ok);
-  });
-
-  /** Depois da chegada: tooltip, gesto e fala começam juntos. */
+  /**
+   * Depois da chegada: tooltip e gesto começam juntos; a fala começa quando o tooltip
+   * termina de entrar (o Nexo já pousou). O áudio da etapa seguinte é pré-carregado.
+   */
   async function present(step: Step, layout: StepLayout): Promise<void> {
     if (closing) return;
     const gesture = step.nexo.gesture;
@@ -274,16 +310,13 @@ async function start(): Promise<void> {
     nexo.lookAt(tooltipCenter(layout));
     debug.setStep(step.id);
     busy = false;
-    const shown = coach.showTooltip();
-    const talking = nexo.talk({ text: step.nexo.speech, narrate: narrate() });
-    await shown;
+    await coach.showTooltip();
+    if (closing || STEPS[current] !== step) return;
     setState('ready', step.id);
+    void voice.play(step.voice);
+    const next = STEPS[STEPS.indexOf(step) + 1];
+    if (next) voice.preload(next.voice);
     if (step.tooltip.kind === 'preview') coach.startDemo();
-    if (step.id === 'waz') {
-      void talking.then(() => {
-        if (!closing && current === STEPS.length - 1) void nexo.gesture('wave');
-      });
-    }
   }
 
   // ---------- troca de etapa ----------
@@ -299,8 +332,8 @@ async function start(): Promise<void> {
     busy = true;
     current = to;
     setState('transition', step.id);
+    silence();
     coach.setBusy(true);
-    nexo.stopTalking();
     const cross = cur.route !== step.route;
     const hidden = coach.hideTooltip(cross ? { duration: CROSS_SCREEN.tooltipOut } : {});
     // Entre telas, o destaque apaga junto com o tooltip (a tela vai ficar limpa).
@@ -371,13 +404,13 @@ async function start(): Promise<void> {
     if (closing) return;
     closing = true;
     busy = true;
+    silence();
     setState('closing');
     opening?.kill();
     transition?.kill();
     opening = null;
     transition = null;
     coach.setBusy(true);
-    nexo.stopTalking();
     const hidden = coach.hideTooltip();
     if (withGesture) await nexo.gesture('bye');
     const exited = nexo.exit();
@@ -417,7 +450,9 @@ async function start(): Promise<void> {
 
   if (params.has('debug')) debug.toggle(true);
   if (import.meta.env.DEV) {
-    Object.assign(window, { __nexo: { nexo, coach, debug, router, gsap, appState, opening: tl } });
+    Object.assign(window, {
+      __nexo: { nexo, coach, debug, router, gsap, appState, voice, opening: tl },
+    });
   }
 }
 

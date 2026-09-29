@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Mede o tempo até o tooltip visível em cada etapa (1440×900, DPR 2):
-// etapa 1 desde o carregamento (navigationStart), etapas 2–7 desde o clique em "Próximo".
+// etapa 1 desde o carregamento (navigationStart), etapas 2–9 desde o clique em "Próximo".
 // "Aparece" = primeiro quadro com opacidade > 0; "visível" = opacidade ≥ 0,99.
 // Também confere, quadro a quadro, que a escala do Nexo nunca passa de 1 (sem overshoot)
 // e o banking máximo.
@@ -12,11 +12,13 @@ const runs = Number(process.argv[3] ?? 3);
 const browser = await chromium.launch({ channel: 'chrome' });
 const IDS = [
   'ferramentas',
-  'chips',
+  'agentes',
   'conversas',
   'favoritas',
   'seu-negocio',
-  'negocio-cards',
+  'base',
+  'produtos',
+  'integracoes',
   'waz',
 ];
 

@@ -100,6 +100,8 @@ export class NexoGuide implements NexoGuideApi {
   private flying = false;
   private anchor: Point = { x: 0, y: 0 };
   private visible = false;
+  /** Voz gravada (opcional): o destroy() também para e descarrega os áudios. */
+  private voice: { destroy(): void } | null = null;
 
   constructor(opts: NexoGuideOptions = {}) {
     this.modelUrl = opts.modelUrl ?? asset('models/nexo.glb');
@@ -141,6 +143,7 @@ export class NexoGuide implements NexoGuideApi {
     this.stage = stage;
     stage.motion.opacity = 0;
     stage.face.speed = prefersReducedMotion() ? 0.6 : 1;
+    stage.face.levelSteps = prefersReducedMotion() ? 3 : 5;
     this.container.append(stage.canvas);
     window.addEventListener('resize', this.handleResize);
     try {
@@ -177,7 +180,14 @@ export class NexoGuide implements NexoGuideApi {
     this.placeImg();
   }
 
+  /** Liga a voz gravada ao ciclo de vida do Nexo (extra, fora do contrato). */
+  useVoice(voice: { destroy(): void }): void {
+    this.voice = voice;
+  }
+
   destroy(): void {
+    this.voice?.destroy();
+    this.voice = null;
     window.removeEventListener('resize', this.handleResize);
     window.clearTimeout(this.expressionTimer);
     this.current?.kill();
@@ -422,6 +432,20 @@ export class NexoGuide implements NexoGuideApi {
       window.setTimeout(r, base * (reduced ? REDUCED.talkSlowdown : 1)),
     );
     done();
+  }
+
+  /**
+   * Boca pela voz gravada (extra, fora do contrato): volume 0..1 do AnalyserNode,
+   * 'auto' (padrão pseudoaleatório, modo silencioso) ou null (sorriso, na hora).
+   */
+  speakLevel(level: number | 'auto' | null): void {
+    const face = this.stage?.face;
+    if (!face) return;
+    face.setTalkLevel(level);
+    // Só mexe na expressão ao entrar ou sair da fala (listen, wink etc. ficam intactos).
+    if (level !== null) this.expression = 'talk';
+    else if (this.expression === 'talk') this.expression = 'smile';
+    if (this.look) this.look.amplitude = level === null ? 1 : 0.5;
   }
 
   /** Para a fala (e a narração) na hora. */

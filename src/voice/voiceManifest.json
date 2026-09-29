@@ -1,0 +1,539 @@
+{
+  "step-01-ferramentas": {
+    "audio": "audio/nexo/step-01-ferramentas.mp3",
+    "text": "Aqui você acessa suas ferramentas",
+    "duration": 2.16,
+    "method": "faster-whisper",
+    "words": [
+      {
+        "text": "Aqui",
+        "start": 0.0,
+        "end": 0.3
+      },
+      {
+        "text": "você",
+        "start": 0.3,
+        "end": 0.56
+      },
+      {
+        "text": "acessa",
+        "start": 0.56,
+        "end": 1.0
+      },
+      {
+        "text": "suas",
+        "start": 1.0,
+        "end": 1.2
+      },
+      {
+        "text": "ferramentas",
+        "start": 1.2,
+        "end": 2.04
+      }
+    ]
+  },
+  "step-02-agentes": {
+    "audio": "audio/nexo/step-02-agentes.mp3",
+    "text": "Vamos focar no Waz por hora, mas você pode contratar mais agentes futuramente depois.",
+    "duration": 4.72,
+    "method": "faster-whisper",
+    "words": [
+      {
+        "text": "Vamos",
+        "start": 0.0,
+        "end": 0.24
+      },
+      {
+        "text": "focar",
+        "start": 0.24,
+        "end": 0.64
+      },
+      {
+        "text": "no",
+        "start": 0.64,
+        "end": 0.82
+      },
+      {
+        "text": "Waz",
+        "start": 0.82,
+        "end": 1.24
+      },
+      {
+        "text": "por",
+        "start": 1.24,
+        "end": 1.36
+      },
+      {
+        "text": "hora,",
+        "start": 1.36,
+        "end": 1.54
+      },
+      {
+        "text": "mas",
+        "start": 1.76,
+        "end": 1.9
+      },
+      {
+        "text": "você",
+        "start": 1.9,
+        "end": 2.1
+      },
+      {
+        "text": "pode",
+        "start": 2.1,
+        "end": 2.34
+      },
+      {
+        "text": "contratar",
+        "start": 2.34,
+        "end": 2.86
+      },
+      {
+        "text": "mais",
+        "start": 2.86,
+        "end": 3.14
+      },
+      {
+        "text": "agentes",
+        "start": 3.14,
+        "end": 3.56
+      },
+      {
+        "text": "futuramente",
+        "start": 3.56,
+        "end": 4.14
+      },
+      {
+        "text": "depois.",
+        "start": 4.14,
+        "end": 4.44
+      }
+    ]
+  },
+  "step-03-conversas": {
+    "audio": "audio/nexo/step-03-conversas.mp3",
+    "text": "Conversas é por onde você consegue visualizar seus leads e atendimentos. Vamos deixar ela favoritada?",
+    "duration": 6.8,
+    "method": "faster-whisper",
+    "words": [
+      {
+        "text": "Conversas",
+        "start": 0.0,
+        "end": 0.7
+      },
+      {
+        "text": "é",
+        "start": 0.7,
+        "end": 0.8
+      },
+      {
+        "text": "por",
+        "start": 0.8,
+        "end": 0.96
+      },
+      {
+        "text": "onde",
+        "start": 0.96,
+        "end": 1.14
+      },
+      {
+        "text": "você",
+        "start": 1.14,
+        "end": 1.44
+      },
+      {
+        "text": "consegue",
+        "start": 1.44,
+        "end": 1.96
+      },
+      {
+        "text": "visualizar",
+        "start": 1.96,
+        "end": 2.68
+      },
+      {
+        "text": "seus",
+        "start": 2.68,
+        "end": 2.9
+      },
+      {
+        "text": "leads",
+        "start": 2.9,
+        "end": 3.3
+      },
+      {
+        "text": "e",
+        "start": 3.3,
+        "end": 3.72
+      },
+      {
+        "text": "atendimentos.",
+        "start": 3.72,
+        "end": 4.4
+      },
+      {
+        "text": "Vamos",
+        "start": 4.92,
+        "end": 5.22
+      },
+      {
+        "text": "deixar",
+        "start": 5.22,
+        "end": 5.56
+      },
+      {
+        "text": "ela",
+        "start": 5.56,
+        "end": 5.76
+      },
+      {
+        "text": "favoritada?",
+        "start": 5.76,
+        "end": 6.5
+      }
+    ]
+  },
+  "step-04-favoritas": {
+    "audio": "audio/nexo/step-04-favoritas.mp3",
+    "text": "Assim ela fica disponível aqui na barra lateral e na sua homepage",
+    "duration": 4.48,
+    "method": "faster-whisper",
+    "words": [
+      {
+        "text": "Assim",
+        "start": 0.0,
+        "end": 0.42
+      },
+      {
+        "text": "ela",
+        "start": 0.52,
+        "end": 0.62
+      },
+      {
+        "text": "fica",
+        "start": 0.62,
+        "end": 0.84
+      },
+      {
+        "text": "disponível",
+        "start": 0.84,
+        "end": 1.68
+      },
+      {
+        "text": "aqui",
+        "start": 1.68,
+        "end": 1.9
+      },
+      {
+        "text": "na",
+        "start": 1.9,
+        "end": 2.06
+      },
+      {
+        "text": "barra",
+        "start": 2.06,
+        "end": 2.36
+      },
+      {
+        "text": "lateral",
+        "start": 2.36,
+        "end": 2.78
+      },
+      {
+        "text": "e",
+        "start": 2.78,
+        "end": 3.28
+      },
+      {
+        "text": "na",
+        "start": 3.28,
+        "end": 3.42
+      },
+      {
+        "text": "sua",
+        "start": 3.42,
+        "end": 3.68
+      },
+      {
+        "text": "homepage",
+        "start": 3.68,
+        "end": 3.98
+      }
+    ]
+  },
+  "step-05-seu-negocio": {
+    "audio": "audio/nexo/step-05-seu-negocio.mp3",
+    "text": "Aqui ficam as informações do seu negócio",
+    "duration": 3.28,
+    "method": "faster-whisper",
+    "words": [
+      {
+        "text": "Aqui",
+        "start": 0.0,
+        "end": 0.38
+      },
+      {
+        "text": "ficam",
+        "start": 0.38,
+        "end": 0.98
+      },
+      {
+        "text": "as",
+        "start": 0.98,
+        "end": 1.24
+      },
+      {
+        "text": "informações",
+        "start": 1.24,
+        "end": 1.94
+      },
+      {
+        "text": "do",
+        "start": 1.94,
+        "end": 2.26
+      },
+      {
+        "text": "seu",
+        "start": 2.26,
+        "end": 2.5
+      },
+      {
+        "text": "negócio",
+        "start": 2.5,
+        "end": 2.8
+      }
+    ]
+  },
+  "step-06-base": {
+    "audio": "audio/nexo/step-06-base.mp3",
+    "text": "Base de conhecimento é o cérebro digital do seu negócio 🧠",
+    "duration": 3.84,
+    "method": "faster-whisper",
+    "words": [
+      {
+        "text": "Base",
+        "start": 0.0,
+        "end": 0.44
+      },
+      {
+        "text": "de",
+        "start": 0.44,
+        "end": 0.6
+      },
+      {
+        "text": "conhecimento",
+        "start": 0.6,
+        "end": 1.34
+      },
+      {
+        "text": "é",
+        "start": 1.34,
+        "end": 1.64
+      },
+      {
+        "text": "o",
+        "start": 1.64,
+        "end": 1.72
+      },
+      {
+        "text": "cérebro",
+        "start": 1.72,
+        "end": 2.22
+      },
+      {
+        "text": "digital",
+        "start": 2.22,
+        "end": 2.68
+      },
+      {
+        "text": "do",
+        "start": 2.68,
+        "end": 2.96
+      },
+      {
+        "text": "seu",
+        "start": 2.96,
+        "end": 3.24
+      },
+      {
+        "text": "negócio",
+        "start": 3.24,
+        "end": 3.52
+      },
+      {
+        "text": "🧠",
+        "start": 3.52,
+        "end": 3.77
+      }
+    ]
+  },
+  "step-07-produtos": {
+    "audio": "audio/nexo/step-07-produtos.mp3",
+    "text": "Seu catálogo de produtos e serviços fica aqui.",
+    "duration": 3.04,
+    "method": "faster-whisper",
+    "words": [
+      {
+        "text": "Seu",
+        "start": 0.0,
+        "end": 0.32
+      },
+      {
+        "text": "catálogo",
+        "start": 0.32,
+        "end": 0.82
+      },
+      {
+        "text": "de",
+        "start": 0.82,
+        "end": 1.0
+      },
+      {
+        "text": "produtos",
+        "start": 1.0,
+        "end": 1.48
+      },
+      {
+        "text": "e",
+        "start": 1.48,
+        "end": 1.6
+      },
+      {
+        "text": "serviços",
+        "start": 1.6,
+        "end": 2.14
+      },
+      {
+        "text": "fica",
+        "start": 2.14,
+        "end": 2.58
+      },
+      {
+        "text": "aqui.",
+        "start": 2.58,
+        "end": 2.94
+      }
+    ]
+  },
+  "step-08-integracoes": {
+    "audio": "audio/nexo/step-08-integracoes.mp3",
+    "text": "Por aqui você administra suas integrações",
+    "duration": 3.04,
+    "method": "faster-whisper",
+    "words": [
+      {
+        "text": "Por",
+        "start": 0.0,
+        "end": 0.24
+      },
+      {
+        "text": "aqui",
+        "start": 0.24,
+        "end": 0.5
+      },
+      {
+        "text": "você",
+        "start": 0.74,
+        "end": 0.94
+      },
+      {
+        "text": "administra",
+        "start": 0.94,
+        "end": 1.7
+      },
+      {
+        "text": "suas",
+        "start": 1.7,
+        "end": 1.9
+      },
+      {
+        "text": "integrações",
+        "start": 1.9,
+        "end": 2.78
+      }
+    ]
+  },
+  "step-09-waz": {
+    "audio": "audio/nexo/step-09-waz.mp3",
+    "text": "Kauê, o Waz vai te ajudar a seguir daqui em diante! Nos vemos em breve.",
+    "duration": 4.48,
+    "method": "faster-whisper",
+    "words": [
+      {
+        "text": "Kauê,",
+        "start": 0.0,
+        "end": 0.62
+      },
+      {
+        "text": "o",
+        "start": 0.72,
+        "end": 0.8
+      },
+      {
+        "text": "Waz",
+        "start": 0.8,
+        "end": 0.96
+      },
+      {
+        "text": "vai",
+        "start": 0.96,
+        "end": 1.14
+      },
+      {
+        "text": "te",
+        "start": 1.14,
+        "end": 1.24
+      },
+      {
+        "text": "ajudar",
+        "start": 1.24,
+        "end": 1.58
+      },
+      {
+        "text": "a",
+        "start": 1.58,
+        "end": 1.76
+      },
+      {
+        "text": "seguir",
+        "start": 1.76,
+        "end": 2.02
+      },
+      {
+        "text": "daqui",
+        "start": 2.02,
+        "end": 2.46
+      },
+      {
+        "text": "em",
+        "start": 2.46,
+        "end": 2.66
+      },
+      {
+        "text": "diante!",
+        "start": 2.66,
+        "end": 3.06
+      },
+      {
+        "text": "Nos",
+        "start": 3.34,
+        "end": 3.52
+      },
+      {
+        "text": "vemos",
+        "start": 3.52,
+        "end": 3.8
+      },
+      {
+        "text": "em",
+        "start": 3.8,
+        "end": 4.0
+      },
+      {
+        "text": "breve.",
+        "start": 4.0,
+        "end": 4.18
+      }
+    ]
+  }
+}

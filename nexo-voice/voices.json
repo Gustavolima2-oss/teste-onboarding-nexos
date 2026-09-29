@@ -1,0 +1,59 @@
+{
+  "note": "Voz: Preston (Magnific voiceId 870, eleven_v3, stability 1, similarity 0.15, speed 0.95, prefixo [robotic voice][monotone][flat]). Os links do Magnific expiram por volta de 04/10/2026: rode o build antes disso e versione os MP3 gerados.",
+  "steps": [
+    {
+      "id": "step-01-ferramentas",
+      "figmaNode": "2350:2871",
+      "text": "Aqui você acessa suas ferramentas",
+      "source": "sources/step-01-ferramentas.mp3"
+    },
+    {
+      "id": "step-02-agentes",
+      "figmaNode": "2350:45423",
+      "text": "Vamos focar no Waz por hora, mas você pode contratar mais agentes futuramente depois.",
+      "url": "removido do repositório público (link assinado do Magnific, expira ~04/10/2026); o áudio limpo foi baixado para nexo-voice/.clean/"
+    },
+    {
+      "id": "step-03-conversas",
+      "figmaNode": "2350:46104",
+      "text": "Conversas é por onde você consegue visualizar seus leads e atendimentos. Vamos deixar ela favoritada?",
+      "url": "removido do repositório público (link assinado do Magnific, expira ~04/10/2026); o áudio limpo foi baixado para nexo-voice/.clean/"
+    },
+    {
+      "id": "step-04-favoritas",
+      "figmaNode": "2350:50099",
+      "text": "Assim ela fica disponível aqui na barra lateral e na sua homepage",
+      "url": "removido do repositório público (link assinado do Magnific, expira ~04/10/2026); o áudio limpo foi baixado para nexo-voice/.clean/"
+    },
+    {
+      "id": "step-05-seu-negocio",
+      "figmaNode": "2350:50882",
+      "text": "Aqui ficam as informações do seu negócio",
+      "url": "removido do repositório público (link assinado do Magnific, expira ~04/10/2026); o áudio limpo foi baixado para nexo-voice/.clean/"
+    },
+    {
+      "id": "step-06-base",
+      "figmaNode": "2350:51269",
+      "text": "Base de conhecimento é o cérebro digital do seu negócio 🧠",
+      "url": "removido do repositório público (link assinado do Magnific, expira ~04/10/2026); o áudio limpo foi baixado para nexo-voice/.clean/"
+    },
+    {
+      "id": "step-07-produtos",
+      "figmaNode": "2483:6066",
+      "text": "Seu catálogo de produtos e serviços fica aqui.",
+      "url": "removido do repositório público (link assinado do Magnific, expira ~04/10/2026); o áudio limpo foi baixado para nexo-voice/.clean/"
+    },
+    {
+      "id": "step-08-integracoes",
+      "figmaNode": "2483:6244",
+      "text": "Por aqui você administra suas integrações",
+      "url": "removido do repositório público (link assinado do Magnific, expira ~04/10/2026); o áudio limpo foi baixado para nexo-voice/.clean/"
+    },
+    {
+      "id": "step-09-waz",
+      "figmaNode": "2350:51560",
+      "text": "Kauê, o Waz vai te ajudar a seguir daqui em diante! Nos vemos em breve.",
+      "url": "removido do repositório público (link assinado do Magnific, expira ~04/10/2026); o áudio limpo foi baixado para nexo-voice/.clean/"
+    }
+  ]
+}

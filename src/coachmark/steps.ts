@@ -1,16 +1,19 @@
-// Configuração das etapas do onboarding (fase 2). Medidas do Figma
-// HYM49734BUPEwZfnNLLDY4, seção 2350:2826, sempre relativas: tooltip → alvo,
-// Nexo → tooltip. Os textos são os do Figma (negritos em <strong>).
+// Configuração das 9 etapas do onboarding. Figma HYM49734BUPEwZfnNLLDY4, seção
+// 2350:2826 (frames 2350:2871 … 2350:51560). Medidas sempre relativas: tooltip → alvo,
+// Nexo → tooltip.
 //
-// Navegação nos dois sentidos: "Próximo" (→, Enter, ou clique no alvo quando ele é
-// um item de navegação: targetClickAdvances) e "Voltar" (←, a partir da etapa 2).
-// Quando a etapa muda de tela, a tela nova entra limpa, sem overlay, e fica assim por
-// CLEAN_SCREEN_HOLD_S antes do overlay voltar (ver main.ts). O estado do fluxo não é acumulado: é DERIVADO da etapa (flowStateAt),
-// a partir dos efeitos declarados em `completes`. Assim, voltar desfaz exatamente o
-// que o avanço fez (ex.: voltar da 4 para a 3 tira "Conversas" dos favoritos).
+// O texto de cada tooltip vem do manifesto da voz gravada (src/voice/voiceManifest.json,
+// gerado por nexo-voice/build_voices.py): tela e marcações de tempo usam a MESMA divisão
+// por espaços, uma palavra por <span>, para o grifo casar com a fala.
+//
+// Navegação nos dois sentidos: "Próximo" (→, Enter, clique no alvo quando ele é um item
+// de navegação: targetClickAdvances, ou o fim da fala + 400 ms) e "Voltar" (←). O
+// estado do fluxo é DERIVADO da etapa (flowStateAt), a partir dos efeitos em
+// `completes`: voltar desfaz exatamente o que o avanço fez.
 
 import type { Placement } from './placement';
 import type { Route } from '../app/router';
+import { VOICES } from '../voice/voice';
 import { asset } from '../utils/asset';
 
 export type { Route } from '../app/router';
@@ -33,11 +36,13 @@ export type Step = {
    * (cursor pointer e hover no alvo). Nos outros alvos, o clique não navega.
    */
   targetClickAdvances: boolean;
+  /** Fala gravada da etapa (chave do voiceManifest.json): áudio, texto e tempos. */
+  voice: string;
+  /** Texto do tooltip (= texto do manifesto, sem título; uma frase na maioria). */
+  text: string;
   tooltip: {
-    kind: 'text' | 'preview' | 'video';
-    title: string;
-    /** Parágrafos (HTML simples: <strong>). */
-    paragraphs: string[];
+    /** 'text' | 'preview' (demo do cursor) | 'video' (pôster + Play) | 'image'. */
+    kind: 'text' | 'preview' | 'video' | 'image';
     placement: 'right' | 'left' | 'top' | 'bottom';
     /**
      * Posição do tooltip medida no Figma, relativa ao alvo:
@@ -45,18 +50,18 @@ export type Step = {
      * bottom → a partir do canto inferior ESQUERDO do alvo.
      */
     offset: { x: number; y: number };
-    media?: { poster: string; caption?: string; src?: string };
+    /** Mídia 378×210 no topo do tooltip. */
+    media?: { poster: string; alt: string; src?: string };
   };
   nexo: {
     /**
      * Centro do CORPO do Nexo relativo ao tooltip: x a partir da borda direita,
-     * y a partir do centro vertical (scripts/png-bbox.json).
+     * y a partir do centro vertical. No Figma o corpo fica a (195,3; 84,33) do canto
+     * do PNG de 385×214,87.
      */
     offset: { x: number; y: number };
     facing: 'left' | 'right';
     gesture: Gesture;
-    /** Texto falado (narração e duração da fala). */
-    speech: string;
   };
   /**
    * Efeitos de ter passado por esta etapa, valendo da etapa seguinte em diante.
@@ -65,143 +70,137 @@ export type Step = {
   completes?: { favorite?: string };
 };
 
-const plain = (html: string) => html.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&');
-
-const step = (s: Omit<Step, 'nexo'> & { nexo: Omit<Step['nexo'], 'speech'> }): Step => ({
-  ...s,
-  nexo: { ...s.nexo, speech: `${s.tooltip.title}. ${s.tooltip.paragraphs.map(plain).join(' ')}` },
-});
+const step = (s: Omit<Step, 'text'>): Step => {
+  const clip = VOICES[s.voice];
+  if (!clip) throw new Error(`steps.ts: voz ${s.voice} fora do voiceManifest.json`);
+  return { ...s, text: clip.text };
+};
 
 export const STEPS: Step[] = [
   step({
-    // 2350:2871 — alvo 2350:2998 (16,124 32×32); tooltip 2350:2975 (80,77 378×163); Nexo 2350:2993.
+    // 2350:2871 — alvo 2350:2998 (16,124 32×32); tooltip 2483:5619 (67,90 378×143); Nexo 2350:2993 (380,65).
     id: 'ferramentas',
     route: '/home',
     target: '[data-coach="nav-ferramentas"]',
     highlight: 'circle',
     targetClickAdvances: true,
-    tooltip: {
-      kind: 'text',
-      title: 'Ferramentas',
-      paragraphs: ['É aqui que ficam os módulos e ferramentas disponíveis.'],
-      placement: 'right',
-      offset: { x: 32, y: -47 },
-    },
-    nexo: { offset: { x: 127.3, y: -9.1 }, facing: 'left', gesture: 'wave' },
+    voice: 'step-01-ferramentas',
+    tooltip: { kind: 'text', placement: 'right', offset: { x: 19, y: -34 } },
+    nexo: { offset: { x: 130.3, y: -12.1 }, facing: 'left', gesture: 'wave' },
   }),
   step({
-    // 2350:45423 — chips 2350:46065 (556,136 859×34); tooltip 2350:46084 (1040,203 378×243).
-    id: 'chips',
+    // 2350:45423 — chips 2350:46065 (556,136 859×34); tooltip 2483:5683 (1061,208 378×181); Nexo (1382,188).
+    id: 'agentes',
     route: '/ferramentas',
     target: '[data-coach="ferramentas-chips"]',
     highlight: 'none',
     targetClickAdvances: false,
-    tooltip: {
-      kind: 'text',
-      title: 'Ferramentas',
-      paragraphs: [
-        'Cada uma é um módulo que cuida de uma parte do seu negócio. Conforme você expande seu time, dá pra contratar outros agentes (jurídico, financeiro, RH…).',
-        'Vamos focar no <strong>Waz</strong> por hora, seu agente de <strong>Vendas &amp; Atendimento</strong>.',
-      ],
-      placement: 'bottom',
-      offset: { x: 484, y: 33 },
-    },
-    nexo: { offset: { x: 159.3, y: -52.1 }, facing: 'left', gesture: 'present' },
+    voice: 'step-02-agentes',
+    tooltip: { kind: 'text', placement: 'bottom', offset: { x: 505, y: 38 } },
+    nexo: { offset: { x: 138.3, y: -26.2 }, facing: 'left', gesture: 'present' },
   }),
   step({
-    // 2350:46104 — card 2350:46746 (555,265 417×341); tooltip rico 2350:46910 (1004,264 378×425).
+    // 2350:46104 — card 2350:46746 (555,265 417×341); tooltip com prévia 2483:5708 (1009,265 378×417); Nexo (1330,244).
     id: 'conversas',
     route: '/ferramentas',
     target: '[data-coach="card-conversas"]',
     highlight: 'card',
     targetClickAdvances: false,
-    tooltip: {
-      kind: 'preview',
-      title: 'Conversas',
-      paragraphs: [
-        'A ferramenta de conversas é por onde você consegue visualizar os leads que chegam e o Waz realiza os atendimentos.',
-        'Vamos deixar ela favoritada? Assim ela fica de fácil acesso para quando você precisar.',
-      ],
-      placement: 'right',
-      offset: { x: 32, y: -0.84 },
-    },
-    nexo: { offset: { x: 163.3, y: -58.3 }, facing: 'left', gesture: 'point' },
+    voice: 'step-03-conversas',
+    tooltip: { kind: 'preview', placement: 'right', offset: { x: 37, y: 0 } },
+    nexo: { offset: { x: 138.3, y: -145.2 }, facing: 'left', gesture: 'point' },
     // Ao sair de "Conversas", a ferramenta fica favoritada (aparece na sidebar, alvo da 4).
     completes: { favorite: 'conversas' },
   }),
   step({
-    // 2350:50099 — favorito 2350:50482 (13,283 36×36); tooltip 2350:50511 (100,227 378×163).
+    // 2350:50099 — favorito 2350:50482 (13,283 36×36); tooltip 2350:50511 (100,227 378×138); Nexo (446,196).
     id: 'favoritas',
     route: '/ferramentas',
     target: '[data-coach="nav-fav-conversas"]',
     highlight: 'circle',
     targetClickAdvances: true,
-    tooltip: {
-      kind: 'text',
-      title: 'Ferramentas Favoritas',
-      paragraphs: [
-        'Quando você favorita uma ferramenta, ela fica disponível aqui na barra lateral e na sua homepage.',
-      ],
-      placement: 'right',
-      offset: { x: 51, y: -56 },
-    },
-    nexo: { offset: { x: 163.3, y: -28.1 }, facing: 'left', gesture: 'point' },
+    voice: 'step-04-favoritas',
+    tooltip: { kind: 'text', placement: 'right', offset: { x: 51, y: -56 } },
+    nexo: { offset: { x: 163.3, y: -15.7 }, facing: 'left', gesture: 'point' },
   }),
   step({
-    // 2350:50882 — alvo 2350:51244 (16,162 32×32); tooltip 2350:51247 (93,96 378×163).
+    // 2350:50882 — alvo 2350:51244 (16,162 32×32); tooltip 2483:5733 (71,108 378×162); Nexo (406,75).
     id: 'seu-negocio',
     route: '/ferramentas',
     target: '[data-coach="nav-seu-negocio"]',
     highlight: 'circle',
     targetClickAdvances: true,
-    tooltip: {
-      kind: 'text',
-      title: 'Seu Negócio',
-      paragraphs: ['As informações do seu negócio ficam todas separadas aqui neste item.'],
-      placement: 'right',
-      offset: { x: 45, y: -66 },
-    },
-    nexo: { offset: { x: 130.3, y: -18.1 }, facing: 'left', gesture: 'point' },
+    voice: 'step-05-seu-negocio',
+    tooltip: { kind: 'text', placement: 'right', offset: { x: 23, y: -54 } },
+    nexo: { offset: { x: 152.3, y: -29.7 }, facing: 'left', gesture: 'point' },
   }),
   step({
-    // 2350:51269 — cards 2350:51273 (700,485 520×200); tooltip com vídeo 2350:51480 (1242,367 378×441).
-    id: 'negocio-cards',
+    // 2350:51269 — card 2350:51461 (700,485 168×200); tooltip com vídeo 2483:6043 (890,485 378×360); Nexo (1206,456).
+    id: 'base',
     route: '/seu-negocio',
-    target: '[data-coach="negocio-cards"]',
-    highlight: 'card',
+    target: '[data-coach="card-base"]',
+    highlight: 'none',
     targetClickAdvances: false,
+    voice: 'step-06-base',
     tooltip: {
       kind: 'video',
-      title: 'Seu Negócio',
-      paragraphs: [
-        'Em Seu Negócio fica tudo que seu time atender bem: a <strong>Base de conhecimento</strong> (de onde saem as respostas), seus <strong>Produtos e Serviços</strong> e as <strong>Integrações.</strong>',
-        'Tudo que montamos juntos tá aqui, e é só editar quando precisar.',
-      ],
       placement: 'right',
-      offset: { x: 22, y: -118 },
+      offset: { x: 22, y: 0 },
       media: {
-        poster: asset('images/onboarding/video-poster.jpg'),
-        caption: 'Você terminou o treinamento inicial do seu time!',
+        poster: asset('images/onboarding/poster-base.jpg'),
+        alt: 'Vídeo: Base de conhecimento',
         src: asset('video/seu-negocio.webm'),
       },
     },
-    nexo: { offset: { x: 133.3, y: -52.1 }, facing: 'left', gesture: 'think' },
+    nexo: { offset: { x: 133.3, y: -124.7 }, facing: 'left', gesture: 'think' },
   }),
   step({
-    // 2350:51560 — avatar do Waz 2350:51731 (16,222 32×32); tooltip 2350:51760 (70,160 378×179).
+    // 2483:6066 — card 2483:6146 (876,485 168×200); tooltip com vídeo 2483:6219 (1060,485 378×360); Nexo (1381,460).
+    // O Figma traz "Seus catálogo … ficam aqui"; o texto correto (e gravado) é o do manifesto.
+    id: 'produtos',
+    route: '/seu-negocio',
+    target: '[data-coach="card-produtos"]',
+    highlight: 'none',
+    targetClickAdvances: false,
+    voice: 'step-07-produtos',
+    tooltip: {
+      kind: 'video',
+      placement: 'right',
+      offset: { x: 16, y: 0 },
+      media: {
+        poster: asset('images/onboarding/poster-produtos.jpg'),
+        alt: 'Vídeo: Produtos e Serviços',
+        src: asset('video/seu-negocio.webm'),
+      },
+    },
+    nexo: { offset: { x: 138.3, y: -120.7 }, facing: 'left', gesture: 'point' },
+  }),
+  step({
+    // 2483:6244 — card 2483:6324 (1052,485 168×200); tooltip 2483:6342 (1240,500 378×162); Nexo (1551,460).
+    id: 'integracoes',
+    route: '/seu-negocio',
+    target: '[data-coach="card-integracoes"]',
+    highlight: 'none',
+    targetClickAdvances: false,
+    voice: 'step-08-integracoes',
+    tooltip: { kind: 'text', placement: 'right', offset: { x: 20, y: 15 } },
+    nexo: { offset: { x: 128.3, y: -36.7 }, facing: 'left', gesture: 'point' },
+  }),
+  step({
+    // 2350:51560 — avatar do Waz 2350:51731 (16,222 32×32) + badge; tooltip com imagem 2483:6455 (81,90 378×398); Nexo (416,142).
     id: 'waz',
     route: '/seu-negocio',
     target: '[data-coach="nav-waz"]',
     highlight: 'none',
     targetClickAdvances: false,
+    voice: 'step-09-waz',
     tooltip: {
-      kind: 'text',
-      title: 'Agora é com o Waz!',
-      paragraphs: ['Kauê, o Waz vai te ajudar a seguir daqui em diante!', 'Nos vemos em breve.'],
+      kind: 'image',
       placement: 'right',
-      offset: { x: 22, y: -62 },
+      offset: { x: 33, y: -132 },
+      media: { poster: asset('images/onboarding/kaue-waz.jpg'), alt: 'Kauê e o Waz' },
     },
-    nexo: { offset: { x: 163.3, y: -23.1 }, facing: 'left', gesture: 'wave' },
+    nexo: { offset: { x: 152.3, y: -62.7 }, facing: 'left', gesture: 'wave' },
   }),
 ];
 
