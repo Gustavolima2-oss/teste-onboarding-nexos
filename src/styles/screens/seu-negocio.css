@@ -150,11 +150,11 @@
   padding: 15px; /* 16 px no Figma, com a borda de 1 px por dentro */
   border: 1px solid var(--white);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.35);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  /* Figma (2350:51461): fundo branco OPACO. O blur do Figma fica sob uma camada branca
+     sólida, então não aparece; com fundo translúcido o card ficava cinza sobre o overlay. */
+  background: var(--white);
   box-shadow:
-    0 2px 2px rgba(0, 0, 0, 0.13),
+    0 2px 1px rgba(0, 0, 0, 0.13),
     inset 0 1px 0 rgba(255, 255, 255, 0.7),
     inset 0 0 15px rgba(255, 255, 255, 0.6);
   font: inherit;

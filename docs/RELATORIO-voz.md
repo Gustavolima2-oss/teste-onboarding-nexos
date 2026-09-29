@@ -4,7 +4,7 @@
 
 O onboarding tem **9 etapas** (Figma `HYM49734BUPEwZfnNLLDY4`, seção `2350:2826`) e dois modos:
 
-- **Sem voz (padrão):** o texto aparece inteiro em branco, e o anel em gradiente do "Próximo" funciona como um timer de leitura de `max(duração × 1,25; 3 s)`. No fim, o tour avança sozinho.
+- **Sem voz (padrão):** o texto aparece inteiro em branco, e o anel em gradiente do "Próximo" funciona como um timer de leitura de `max(duração × 2,5; 6 s)`. No fim, o tour avança sozinho.
 - **Com voz** (clique no alto-falante): a fala gravada toca, as palavras acendem uma a uma e a boca do Nexo segue o volume. O anel acompanha o áudio, e o tour avança 400 ms depois do fim. As etapas seguintes já começam falando; pausar e avançar volta ao modo sem voz.
 
 Build, lint e a suíte de **90 verificações** passam.
@@ -13,17 +13,17 @@ Build, lint e a suíte de **90 verificações** passam.
 
 Todas as etapas foram marcadas com o **faster-whisper** (modelo `small`). **Nenhuma caiu no plano B** (energia + sílabas). Em todas, os tempos são crescentes, sem sobreposição, e a última palavra termina antes do fim do áudio.
 
-| #   | Etapa (voz)           | Duração | Palavras | Método         | Fim da última palavra | Timer sem voz |
-| --- | --------------------- | ------- | -------- | -------------- | --------------------- | ------------- |
-| 1   | `step-01-ferramentas` | 1,92 s  | 5        | faster-whisper | 1,76 s                | 3,00 s        |
-| 2   | `step-02-agentes`     | 4,56 s  | 14       | faster-whisper | 4,30 s                | 5,70 s        |
-| 3   | `step-03-conversas`   | 5,20 s  | 15       | faster-whisper | 5,08 s                | 6,50 s        |
-| 4   | `step-04-favoritas`   | 3,44 s  | 12       | faster-whisper | 2,98 s                | 4,30 s        |
-| 5   | `step-05-seu-negocio` | 2,24 s  | 7        | faster-whisper | 1,92 s                | 3,00 s        |
-| 6   | `step-06-base`        | 3,36 s  | 11       | faster-whisper | 3,25 s                | 4,20 s        |
-| 7   | `step-07-produtos`    | 2,56 s  | 8        | faster-whisper | 2,46 s                | 3,20 s        |
-| 8   | `step-08-integracoes` | 2,40 s  | 6        | faster-whisper | 2,14 s                | 3,00 s        |
-| 9   | `step-09-waz`         | 3,92 s  | 15       | faster-whisper | 3,68 s                | 4,90 s        |
+| #   | Etapa (voz)           | Duração | Palavras | Método         | Fim da última palavra | Timer sem voz    |
+| --- | --------------------- | ------- | -------- | -------------- | --------------------- | ---------------- |
+| 1   | `step-01-ferramentas` | 1,92 s  | 5        | faster-whisper | 1,76 s                | 6,00 s           |
+| 2   | `step-02-agentes`     | 4,56 s  | 14       | faster-whisper | 4,30 s                | 11,40 s          |
+| 3   | `step-03-conversas`   | 5,20 s  | 15       | faster-whisper | 5,08 s                | sem timer (ação) |
+| 4   | `step-04-favoritas`   | 3,44 s  | 12       | faster-whisper | 2,98 s                | 8,60 s           |
+| 5   | `step-05-seu-negocio` | 2,24 s  | 7        | faster-whisper | 1,92 s                | 6,00 s           |
+| 6   | `step-06-base`        | 3,36 s  | 11       | faster-whisper | 3,25 s                | 8,40 s           |
+| 7   | `step-07-produtos`    | 2,56 s  | 8        | faster-whisper | 2,46 s                | 6,40 s           |
+| 8   | `step-08-integracoes` | 2,40 s  | 6        | faster-whisper | 2,14 s                | 6,00 s           |
+| 9   | `step-09-waz`         | 3,92 s  | 15       | faster-whisper | 3,68 s                | 9,80 s           |
 
 - **Etapa 6:** o emoji 🧠 é um item à parte no manifesto. Na tela, ele acende junto com "negócio" e não mexe a boca.
 - **Voz anterior:** os áudios e tempos da voz Preston foram apagados e todos regerados, como o prompt pede.
@@ -43,7 +43,7 @@ O filtro novo depende do `rubberband` dentro do ffmpeg. Esta máquina não tem H
 
 ## 3. Comportamento implementado
 
-- **Início:** o onboarding começa sempre sem voz. O texto aparece inteiro, a boca fica no sorriso (com as piscadas) e o anel é o timer de leitura. As constantes `SILENT_TIMER_FACTOR` (1,25) e `SILENT_TIMER_MIN_MS` (3000) ficam em `src/voice/voice.ts`.
+- **Início:** o onboarding começa sempre sem voz. O texto aparece inteiro, a boca fica no sorriso (com as piscadas) e o anel é o timer de leitura. As constantes `SILENT_TIMER_FACTOR` (2,5) e `SILENT_TIMER_MIN_MS` (6000) ficam em `src/voice/voice.ts`.
 - **Ligar a voz:** o alto-falante (ou Espaço) toca o áudio da etapa do início, o texto volta ao cinza, o anel reinicia do zero e passa a seguir `currentTime / duration`. A voz continua ligada nas etapas seguintes.
 - **Pausar:** o áudio para, o anel congela e a palavra que estava sendo dita fica acesa. Retomar volta ao `start` dessa palavra. Avançar com a voz pausada leva a etapa seguinte ao modo sem voz.
 - **Ícone:** mostra a ação do clique.
@@ -71,7 +71,7 @@ Divergências e decisões (também no README):
 | Verificação                                                                           | Resultado                                              |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | Começa sem voz: texto branco, nenhum áudio, anel avançando                            | ok                                                     |
-| Sem voz, avanço em `max(duração × 1,25; 3 s)`                                         | etapas 1 a 3: 3.032/3.000, 5.729/5.700, 6.516/6.500 ms |
+| Sem voz, avanço em `max(duração × 2,5; 6 s)`                                          | ver a seção 7                                          |
 | Alto-falante liga a voz: áudio certo, texto cinza, spans = manifesto, anel reiniciado | ok                                                     |
 | Com voz, avanço em duração + 400 ms                                                   | 4.942/4.960 ms; a etapa seguinte já começa falando     |
 | Pausa congela anel e grifo; retomar volta ao `start` da palavra                       | retomou em 0,980 s para o `start` 0,98                 |
@@ -80,10 +80,17 @@ Divergências e decisões (também no README):
 | `play()` rejeitado cai no modo sem voz sem quebrar o fluxo                            | ok, com o aviso no console                             |
 | Boca só com palavra ativa e no padrão durante o modo sem voz                          | 806 quadros, 0 divergências, 0 quadros falando sem voz |
 
+## 7. Ajustes finais (etapa 3, destaques, timer, vídeo da etapa 9)
+
+- **Etapa 3** avança só favoritando pelo pin do card (sem "Próximo", sem timer e sem avanço automático).
+- **Destaques:** os cards de "Seu negócio" ficaram brancos e opacos, como no Figma. O pixel central de cada alvo é igual com e sem o onboarding nas 9 etapas.
+- **Timer sem voz** dobrado: `max(duração × 2,5; 6 s)`.
+- **Etapa 9:** vídeo em loop no topo do tooltip.
+
 ## 6. Pendências
 
 - **Plano B de marcação:** nenhuma etapa caiu nele.
 - **Filtro:** correlação de 0,99994, não 1,0 (ver a seção 2). Para confirmar a igualdade exata, gere de novo numa máquina com o ffmpeg do Homebrew.
 - **Vídeos das etapas 6 e 7:** os pôsteres são do Figma, mas os dois tocam o mesmo vídeo de placeholder.
-- **Imagem da etapa 9:** só existe em 1x; vale exportar em 2x pelo Figma.
+- **Etapa 9:** o topo do tooltip agora é um vídeo em loop (`public/video/waz-nexo.webm` / `.mp4`, capa `waz-nexo-poster.jpg`).
 - **Navegadores:** testado no Chrome. Safari e Firefox seguem pendentes.

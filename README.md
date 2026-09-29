@@ -8,20 +8,20 @@ Protótipo do onboarding do produto. O mascote 3D **Nexo** guia o usuário por *
 
 ## Como usar
 
-| Ação                      | Como                                                                                            |
-| ------------------------- | ----------------------------------------------------------------------------------------------- |
-| Avançar                   | Botão **Próximo**, **→** ou **Enter**                                                           |
-| Voltar                    | Botão **Voltar**, ou **←** (a partir da etapa 2)                                                |
-| Avançar pelo item marcado | Nas etapas 1, 4 e 5 o item destacado é clicável: clicar nele avança, como no produto real       |
-| Sair do tour              | **Esc**                                                                                         |
-| Reiniciar do começo       | **R**                                                                                           |
-| Ir direto a uma etapa     | **1** a **9**                                                                                   |
-| Ouvir / pausar a voz      | Ícone no tooltip, ou **Espaço**: liga a voz, pausa e retoma (do início da palavra em que parou) |
-| Vídeo (etapas 6 e 7)      | Botão **Play** no tooltip (pausa a fala)                                                        |
+| Ação                      | Como                                                                                                                                                                                                                |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Avançar                   | Botão **Próximo**, **→** ou **Enter**                                                                                                                                                                               |
+| Voltar                    | Botão **Voltar**, ou **←** (a partir da etapa 2)                                                                                                                                                                    |
+| Avançar pelo item marcado | Nas etapas 1, 4 e 5 o item destacado é clicável: clicar nele avança, como no produto real. Na etapa 3 não há "Próximo": avance **favoritando** pelo pin do card Conversas (clique, ou Enter/Espaço com o foco nele) |
+| Sair do tour              | **Esc**                                                                                                                                                                                                             |
+| Reiniciar do começo       | **R**                                                                                                                                                                                                               |
+| Ir direto a uma etapa     | **1** a **9**                                                                                                                                                                                                       |
+| Ouvir / pausar a voz      | Ícone no tooltip, ou **Espaço**: liga a voz, pausa e retoma (do início da palavra em que parou)                                                                                                                     |
+| Vídeo (etapas 6 e 7)      | Botão **Play** no tooltip (pausa a fala)                                                                                                                                                                            |
 
 O **Tab** circula dentro do tooltip ("Voltar", áudio e "Próximo"). Com `prefers-reduced-motion`, o Nexo não voa: ele troca de lugar com um fade.
 
-**Sem voz (padrão) e com voz.** O tour começa **sem voz**: o texto aparece inteiro e o anel em gradiente em volta do "Próximo" funciona como um timer de leitura (duração da fala × 1,25, no mínimo 3 s); no fim, o tour avança sozinho. Clicar no alto-falante **liga a voz**: a etapa fala do início, as palavras acendem uma a uma e o anel passa a acompanhar o áudio; 400 ms depois do fim, o tour avança, e as etapas seguintes já começam falando. Com a voz tocando, o ícone vira pausa. Pausar e avançar leva a etapa seguinte de volta ao modo sem voz. "Próximo" e "Voltar" interrompem tudo na hora. Com a aba em segundo plano, a fala e o timer pausam.
+**Sem voz (padrão) e com voz.** O tour começa **sem voz**: o texto aparece inteiro e o anel em gradiente em volta do "Próximo" funciona como um timer de leitura (duração da fala × 2,5, no mínimo 6 s); no fim, o tour avança sozinho. Clicar no alto-falante **liga a voz**: a etapa fala do início, as palavras acendem uma a uma e o anel passa a acompanhar o áudio; 400 ms depois do fim, o tour avança, e as etapas seguintes já começam falando. Com a voz tocando, o ícone vira pausa. Pausar e avançar leva a etapa seguinte de volta ao modo sem voz. "Próximo" e "Voltar" interrompem tudo na hora. Com a aba em segundo plano, a fala e o timer pausam.
 
 Também dá para abrir numa etapa pelo link: `…/teste-onboarding-nexos/?step=4`.
 
@@ -71,7 +71,7 @@ python3 nexo-voice/build_voices.py       # a partir da raiz do app
 ```
 
 - `robotize.py` aplica o filtro aprovado (+3 semitons com o timbre preservado, via rubberband, e 5% de vocoder; parâmetros intocados, duração preservada). `align.py` marca cada palavra com o faster-whisper (modelo `small`), alinhando ao texto exibido.
-- O player ([src/voice/voice.ts](src/voice/voice.ts)) é o relógio de cada etapa, em dois modos: **timer** (sem voz, `SILENT_TIMER_FACTOR` = 1,25 e `SILENT_TIMER_MIN_MS` = 3000) e **voz** (lê `audio.currentTime` a cada quadro e publica palavras já ditas, progresso do anel, palavra ativa e volume do `AnalyserNode`, em 5 degraus; 3 com movimento reduzido). Sem palavra ativa, e durante todo o modo sem voz, a boca fica no sorriso, trocando no mesmo quadro.
+- O player ([src/voice/voice.ts](src/voice/voice.ts)) é o relógio de cada etapa, em dois modos: **timer** (sem voz, `SILENT_TIMER_FACTOR` = 2,5 e `SILENT_TIMER_MIN_MS` = 6000) e **voz** (lê `audio.currentTime` a cada quadro e publica palavras já ditas, progresso do anel, palavra ativa e volume do `AnalyserNode`, em 5 degraus; 3 com movimento reduzido). Sem palavra ativa, e durante todo o modo sem voz, a boca fica no sorriso, trocando no mesmo quadro.
 - Se o `play()` for rejeitado, a etapa segue no modo sem voz (aviso no console) e o fluxo continua.
 - Para trocar um texto: gere a voz no Magnific com a mesma configuração (`note` em `nexo-voice/voices.json`), atualize o item e rode o build de novo. O texto do tooltip vem do manifesto.
 
@@ -85,6 +85,10 @@ python3 nexo-voice/build_voices.py       # a partir da raiz do app
 - **Emoji** solto (🧠, etapa 6) acende junto com a palavra anterior e não mexe a boca.
 - **Vídeo** (etapas 6 e 7): o Play pausa a fala ou o timer; sem voz, o timer volta a correr quando o vídeo para.
 - **Web Speech:** a narração sintetizada saiu do fluxo; `NexoGuide.talk()` continua na API por compatibilidade.
+- **Etapa 3 (Conversas) avança favoritando** (`advanceOn: 'action'`): sem "Próximo" (o rodapé mantém a altura), sem timer e sem avanço automático; a voz funciona normalmente. O pin do card é o gatilho: cursor pointer, hover, "Fixar no menu" no hover e pulso (anel a cada 1,5 s) depois que o tooltip entra ou que a fala termina. O clique favorita (pin azul, escala 0,85 → 1,1 → 1), o ícone do Conversas voa em arco até a sidebar (500 ms) e o fluxo avança. Voltar da 4 para a 3 desfaz o favorito.
+- **Vídeo da etapa 9** (`kind: 'loop'`): `<video autoplay muted loop playsinline preload="metadata">` no topo do tooltip, WebM primeiro e MP4 de alternativa, com `object-fit: cover` no mesmo espaço da imagem (378×210). Começa quando o tooltip termina de entrar; pausa ao sair da etapa, ao fechar o tooltip e com a aba em segundo plano. Com `prefers-reduced-motion`, ou se o vídeo falhar, fica a capa. Não mexe no timer, na voz nem no avanço.
+- **Destaques sólidos:** os cards de "Seu negócio" são brancos e opacos, como no Figma (antes: branco a 35% com `backdrop-filter`, que ficava cinza sobre o overlay). Um teste compara o pixel central de cada alvo com e sem o onboarding.
+- **AudioContext** só é criado quando a voz é ligada: criá-lo no primeiro clique da página travava a thread por ~400 ms.
 
 ## API do `NexoGuide`
 
@@ -124,7 +128,8 @@ type Step = {
   route: '/home' | '/ferramentas' | '/seu-negocio';
   target: string | string[]; // seletor(es) do alvo; grupos sobem juntos
   highlight: 'circle' | 'card' | 'row' | 'none';
-  targetClickAdvances: boolean; // alvo é item de navegação: clicar nele avança
+  advanceOn: 'next' | 'target' | 'action'; // Próximo/timer | + clique no alvo | só a ação
+  action?: { selector: string; label: string; hint: string; run: () => void; flyTo?: string };
   voice: string; // fala gravada (chave do src/voice/voiceManifest.json)
   text: string; // preenchido a partir do manifesto (mesma divisão de palavras do grifo)
   tooltip: {

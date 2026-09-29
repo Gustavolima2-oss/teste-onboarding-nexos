@@ -23,10 +23,10 @@ export type VoiceClip = {
 };
 export const VOICES: Record<string, VoiceClip> = manifest;
 
-/** Modo sem voz: o timer dura a fala × este fator (um pouco mais lento, para ler)… */
-export const SILENT_TIMER_FACTOR = 1.25;
+/** Modo sem voz: o timer dura a fala × este fator (bem mais lento que a fala, para ler)… */
+export const SILENT_TIMER_FACTOR = 2.5;
 /** …com este mínimo (ms). */
-export const SILENT_TIMER_MIN_MS = 3000;
+export const SILENT_TIMER_MIN_MS = 6000;
 
 /** Duração do timer de leitura de uma etapa (s). */
 export const silentDuration = (clip: VoiceClip): number =>
@@ -76,12 +76,16 @@ function ensureContext(): AudioContext | null {
   return ctx;
 }
 
-/** Qualquer clique ou tecla libera o áudio (política de autoplay), guardado globalmente. */
+/**
+ * Qualquer clique ou tecla libera o áudio (política de autoplay), guardado globalmente.
+ * O AudioContext NÃO é criado aqui: criá-lo trava a thread principal por centenas de ms
+ * (inicialização do áudio) e isso engasgaria o primeiro clique da página. Ele nasce só
+ * quando a voz é ligada (enableVoice).
+ */
 export function installAudioUnlock(): void {
   const unlock = () => {
     unlocked = true;
-    const c = ensureContext();
-    if (c && c.state === 'suspended') void c.resume();
+    if (ctx && ctx.state === 'suspended') void ctx.resume();
   };
   document.addEventListener('pointerdown', unlock, true);
   document.addEventListener('keydown', unlock, true);
@@ -154,6 +158,20 @@ export class VoicePlayer {
     await this.begin(voice);
   }
 
+  /**
+   * Prepara a etapa SEM relógio (etapa que só avança por ação do usuário, sem voz): nada
+   * corre e nada avança sozinho, mas o alto-falante pode ligar a voz dela.
+   */
+  arm(id: string): void {
+    this.stop();
+    const clip = VOICES[id];
+    if (!clip) return;
+    this.id = id;
+    this.clip = clip;
+    this.el = this.audioFor(id);
+    this.emit();
+  }
+
   /** Liga a voz na etapa atual (clique no alto-falante): áudio do início, anel do zero. */
   async enableVoice(): Promise<void> {
     if (!this.clip) return;
@@ -213,6 +231,7 @@ export class VoicePlayer {
     this.voice = false;
     this.hiddenPause = false;
     this.shown = 0;
+    this.clock = { t: 0, since: 0 };
     this.stopLoop();
     if (had) this.emit();
   }

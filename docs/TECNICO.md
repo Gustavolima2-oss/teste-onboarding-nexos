@@ -35,7 +35,7 @@ O `npm test` abre o Chrome instalado via `playwright-core`. Ele cobre:
 - fim do tour, persistência, Tab preso no tooltip, `:focus-visible` e Esc em cada uma das 9 etapas;
 - movimento reduzido e fallback sem WebGL;
 - prévia animada e vídeo;
-- voz: começa sem voz (texto branco, timer de max(duração × 1,25; 3 s) avançando sozinho); o alto-falante liga a voz (áudio certo, grifo, anel reiniciado) e o avanço passa a ser em duração + 400 ms, com a etapa seguinte já falando; pausa e retomada no início da palavra; avançar pausado volta ao modo sem voz; "Próximo" interrompe a fala; `play()` rejeitado cai no modo sem voz; boca só com palavra ativa;
+- voz: começa sem voz (texto branco, timer de max(duração × 2,5; 6 s) avançando sozinho); o alto-falante liga a voz (áudio certo, grifo, anel reiniciado) e o avanço passa a ser em duração + 400 ms, com a etapa seguinte já falando; pausa e retomada no início da palavra; avançar pausado volta ao modo sem voz; "Próximo" interrompe a fala; `play()` rejeitado cai no modo sem voz; boca só com palavra ativa;
 - memória liberada no `destroy()`.
 
 ## Estrutura
@@ -80,7 +80,7 @@ assets-src/               originais: nexo-3d.glb (fora do repositório) e o PNG 
 
 **Navegação nos dois sentidos e estado do fluxo:**
 
-- **Alvo clicável:** com `targetClickAdvances: true` (etapas 1, 4 e 5, cujos alvos são itens de navegação), clicar no alvo destacado avança exatamente como o "Próximo". O alvo ganha `cursor: pointer` e hover (fundo `#EBEDED` e anel branco); durante a transição, o clique é ignorado. Nos outros alvos, um link não navega durante o tour (a rota é sempre do fluxo).
+- **Alvo clicável:** com `advanceOn: 'target'` (etapas 1, 4 e 5, cujos alvos são itens de navegação), clicar no alvo destacado avança exatamente como o "Próximo", com `cursor: pointer` e hover; durante a transição, o clique é ignorado. Com `advanceOn: 'action'` (etapa 3), a etapa só avança pela ação (`action.selector`: o pin do card), que entra no ciclo do Tab e recebe o foco inicial; → e Enter fora dele não avançam. Nos outros alvos, um link não navega durante o tour.
 - "Próximo" (→ ou Enter) avança e "Voltar" (←) retorna, com a mesma coreografia invertida: o tooltip sai, o Nexo voa de volta, o destaque migra e o tooltip anterior entra junto com o gesto. Voltar entre telas (6 → 5, 2 → 1) refaz a troca de tela no sentido inverso, com a mesma tela limpa.
 - O estado do fluxo não é acumulado: `flowStateAt(i)` o **deriva** dos `completes` das etapas anteriores, e `applyFlowState(i)` o aplica a cada troca (e no `?step=N`). Por isso todo estado é reversível: ao voltar da 4 para a 3, "Conversas" sai dos favoritos (com fade na sidebar).
 - Hoje o único efeito é `completes: { favorite: 'conversas' }` na etapa 3. A prévia (etapa 3) e o vídeo (etapa 6) vivem dentro do tooltip e são refeitos a cada exibição.
@@ -108,7 +108,7 @@ assets-src/               originais: nexo-3d.glb (fora do repositório) e o PNG 
 - **Um dono por eixo:** durante o voo, posição, escala, banking (Z) e yaw pertencem ao arco; durante o gesto, o olhar fica congelado e a flutuação desligada. A flutuação (±3 px em 3 s, sem rotação) e o olhar voltam quando o gesto termina. Nenhum movimento usa `back`/`elastic`.
 - **Entre telas:** a tela seguinte é montada numa sonda invisível para medir o destino antes da decolagem. A troca real (fade out 200 ms, montagem, fade in 250 ms) acontece por baixo do voo.
 - **Voltar:** a mesma troca, no sentido inverso (ver "Navegação nos dois sentidos").
-- **Timer e fala:** começam quando o tooltip termina de entrar. Sem voz (padrão), o anel é um timer de leitura (duração × 1,25, mínimo 3 s) e o fluxo avança no fim; com voz, o anel segue o áudio e o fluxo avança 400 ms depois do fim. Toda troca (Próximo, Voltar, alvo, avanço automático, Esc) para o áudio e zera grifo, anel e boca antes de qualquer animação. O áudio da etapa seguinte é pré-carregado nos dois modos.
+- **Timer e fala:** começam quando o tooltip termina de entrar. Sem voz (padrão), o anel é um timer de leitura (duração × 2,5, mínimo 6 s) e o fluxo avança no fim; com voz, o anel segue o áudio e o fluxo avança 400 ms depois do fim. Toda troca (Próximo, Voltar, alvo, avanço automático, Esc) para o áudio e zera grifo, anel e boca antes de qualquer animação. O áudio da etapa seguinte é pré-carregado nos dois modos.
 - **Etapas especiais:** na 3, a demonstração do cursor começa depois do tooltip. Nas 6 e 7, o Play do vídeo pausa a fala e o Nexo passa a `listen`.
 - **Fim:** no "Próximo" da etapa 7, o tooltip sai, o Nexo faz `bye` e voa para fora (900 ms), o overlay some e o foco vai para a página. O Esc encerra a qualquer momento, pela mesma saída sem o gesto.
 

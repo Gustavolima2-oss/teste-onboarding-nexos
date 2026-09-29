@@ -29,7 +29,11 @@ const recorder = () => {
   document.addEventListener(
     'click',
     (e) => {
-      if (e.target instanceof Element && e.target.closest('.coach-next'))
+      // "Próximo", ou o pin do card na etapa 3 (que só avança favoritando).
+      if (
+        e.target instanceof Element &&
+        e.target.closest('.coach-next, [data-coach="fav-conversas"]')
+      )
         window.__clicks.push(performance.now());
     },
     true,
@@ -69,7 +73,8 @@ for (let r = 0; r < runs; r++) {
       { timeout: 20000 },
     );
     await page.waitForTimeout(600);
-    if (i < IDS.length - 1) await page.click('.coach-next');
+    if (i < IDS.length - 1)
+      await page.click(IDS[i] === 'conversas' ? '[data-coach="fav-conversas"]' : '.coach-next');
   }
   const { log, clicks } = await page.evaluate(() => ({
     log: window.__rec,

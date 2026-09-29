@@ -7,6 +7,7 @@
 // Uso: node scripts/test-onboarding.mjs [url]   (1440×900, DPR 2)
 import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';
+import { PNG } from 'pngjs';
 
 const DPR = Number(process.env.DPR ?? 2);
 const base = process.argv[2] ?? 'http://localhost:5199/';
@@ -38,6 +39,10 @@ const ROUTES = [
   '#/seu-negocio',
 ];
 const LAST = IDS.length - 1;
+/** Etapa 3 (Conversas): avança só pela ação (pin do card); o foco inicial é o pin. */
+const ACTION_STEP = IDS.indexOf('conversas');
+const PIN = '[data-coach="fav-conversas"]';
+const focusFor = (i) => (i === ACTION_STEP ? 'tool-card-pin' : 'coach-next');
 let failures = 0;
 const results = {};
 const check = (label, ok, extra = '') => {
@@ -121,13 +126,13 @@ const recorder = () => {
     }));
     perStep.push(s);
     check(
-      `etapa ${i + 1} (${IDS[i]}): rota ${ROUTES[i]}, ${i + 1}/7 bolinhas, alvo destacado, foco no Próximo`,
+      `etapa ${i + 1} (${IDS[i]}): rota ${ROUTES[i]}, ${i + 1}/${IDS.length} bolinhas, alvo destacado, foco no ${i === ACTION_STEP ? 'pin' : 'Próximo'}`,
       s.id === IDS[i] &&
         s.route === ROUTES[i] &&
         s.dots === i + 1 &&
         s.totalDots === IDS.length &&
         s.targetSharp > 0 &&
-        s.focus?.split(' ')[0] === 'coach-next',
+        s.focus?.split(' ')[0] === focusFor(i),
       `${s.route} ${s.dots}/${s.totalDots} foco=${s.focus}`,
     );
     check(
@@ -135,7 +140,7 @@ const recorder = () => {
       s.sameCanvas && s.canvases === 1 && s.overlay === 1,
     );
     if (i < LAST) {
-      // Espaço na etapa 2, Enter nas demais.
+      // → na etapa 2, Enter nas demais (na 3, o Enter é do pin, que tem o foco: favorita).
       await page.keyboard.press(i === 1 ? 'ArrowRight' : 'Enter');
     }
   }
@@ -259,17 +264,24 @@ const recorder = () => {
   const inside = [];
   for (let k = 0; k < 5; k++) {
     await page.keyboard.press('Tab');
-    inside.push(await page.evaluate(() => !!document.activeElement?.closest('.coach-tooltip')));
+    inside.push(
+      await page.evaluate(
+        () =>
+          !!document.activeElement?.closest('.coach-tooltip') ||
+          !!document.activeElement?.matches('.is-coach-action'),
+      ),
+    );
   }
-  check('Tab circula só dentro do tooltip (Voltar, áudio, Próximo)', inside.every(Boolean));
+  check('Tab circula só no tooltip e no pin da etapa 3', inside.every(Boolean));
   const cycle = [];
   for (let k = 0; k < 3; k++) {
     await page.keyboard.press('Tab');
     cycle.push(await page.evaluate(() => document.activeElement?.className.split(' ')[0]));
   }
   check(
-    'Tab passa por Voltar, áudio e Próximo',
-    ['coach-back', 'coach-audio', 'coach-next'].every((c) => cycle.includes(c)),
+    'etapa 3: Tab passa por Voltar, áudio e o pin (sem Próximo)',
+    ['coach-back', 'coach-audio', 'tool-card-pin'].every((c) => cycle.includes(c)) &&
+      !cycle.includes('coach-next'),
     cycle.join(' → '),
   );
   const ring = await page.evaluate(() => document.activeElement?.matches(':focus-visible'));
@@ -456,9 +468,9 @@ const recorder = () => {
       s.favItems === (favExpected ? 1 : 0) &&
       s.backHidden === (i === 0) &&
       s.backDisabled === (i === 0) &&
-      !s.nextDisabled &&
+      s.nextDisabled === (i === ACTION_STEP) &&
       s.tipOpacity === 1 &&
-      s.focus?.split(' ')[0] === 'coach-next' &&
+      s.focus?.split(' ')[0] === focusFor(i) &&
       s.nexoOff < 1 &&
       !s.flying &&
       s.sameCanvas &&
@@ -474,7 +486,8 @@ const recorder = () => {
   // Ida: Próximo (clique) e seta direita alternados.
   for (let i = 0; i < LAST; i++) {
     await verify(i, 'ida');
-    if (i % 2) await page.keyboard.press('ArrowRight');
+    if (i === ACTION_STEP) await page.click(PIN);
+    else if (i % 2) await page.keyboard.press('ArrowRight');
     else await page.click('.coach-next');
     if (i === 0) {
       // Durante o voo, Voltar e Próximo ficam desabilitados.
@@ -574,7 +587,7 @@ const recorder = () => {
   cross('1→2 (clique no alvo)', await run(() => page.click(sel), 'agentes'), '#/ferramentas');
   const same = await run(() => page.click('.coach-next'), 'conversas');
   check('2→3 (mesma tela): o overlay não pisca', same.minDim === 1, JSON.stringify(same));
-  await run(() => page.click('.coach-next'), 'favoritas');
+  await run(() => page.click(PIN), 'favoritas');
   const fav = await run(() => page.click('[data-coach="nav-fav-conversas"]'), 'seu-negocio');
   check('4→5 (clique no alvo, mesma tela): avança sem piscar o overlay', fav.minDim === 1);
   cross(
@@ -610,7 +623,8 @@ const recorder = () => {
     readFileSync(new URL('../src/voice/voiceManifest.json', import.meta.url)),
   );
   const VOICE_IDS = Object.keys(manifest);
-  const timerMs = (vid) => Math.max(manifest[vid].duration * 1.25, 3) * 1000;
+  // Timer do modo sem voz: max(duração × 2,5; 6 s) (SILENT_TIMER_FACTOR / SILENT_TIMER_MIN_MS).
+  const timerMs = (vid) => Math.max(manifest[vid].duration * 2.5, 6) * 1000;
   const nextStepAt = (p, next) =>
     p.evaluate(
       (next) =>
@@ -675,7 +689,7 @@ const recorder = () => {
       s0.audioPaused &&
       s0.spoken === s0.spans &&
       s0.spans === manifest[VOICE_IDS[0]].words.length &&
-      s0.progress > 0.15 &&
+      s0.progress > 0.08 &&
       s0.icon === 'off' &&
       s0.pressed === 'false' &&
       s0.label === 'Ouvir o Nexo',
@@ -683,7 +697,7 @@ const recorder = () => {
   );
   await context.close();
 
-  // (2) sem voz, avanço automático em max(duração × 1,25; 3 s), medido do instante em
+  // (2) sem voz, avanço automático em max(duração × 2,5; 6 s), medido do instante em
   // que cada etapa fica "ready" (quando o timer começa).
   {
     const { page: p, context: c } = await newPage();
@@ -703,7 +717,8 @@ const recorder = () => {
     });
     await p.goto(`${base}?onboarding=reset#/home`);
     const autos = [];
-    for (let i = 0; i < 3; i++) {
+    // Etapas 1 e 2 (a 3 só avança pela ação do pin).
+    for (let i = 0; i < ACTION_STEP; i++) {
       await ready(p, IDS[i]);
       const t1 = await nextStepAt(p, IDS[i + 1]);
       const t0 = await p.evaluate(
@@ -717,7 +732,7 @@ const recorder = () => {
       });
     }
     check(
-      'sem voz: avanço automático em max(duração × 1,25; 3 s) (tolerância 250 ms)',
+      'sem voz: avanço automático em max(duração × 2,5; 6 s) (tolerância 250 ms)',
       autos.every((a) => Math.abs(a.ms - a.expected) < 250),
       autos.map((a) => `${a.step}:${a.ms}/${a.expected}`).join(' '),
     );
@@ -784,7 +799,9 @@ const recorder = () => {
     );
     // (5) pausa e retomada.
     await p.waitForFunction(() => window.__nexo.voice.lastFrame?.t > 1.2, null, { timeout: 8000 });
-    await p.keyboard.press(' '); // foco no "Próximo", dentro do tooltip
+    // Espaço com o foco dentro do tooltip (na etapa 3 o foco inicial é o pin, onde o Espaço favorita).
+    await p.focus('.coach-audio');
+    await p.keyboard.press(' ');
     const a = await snap(p);
     await p.waitForTimeout(700);
     const b = await snap(p);
@@ -810,7 +827,27 @@ const recorder = () => {
       Math.abs(r - expectStart) < 0.12,
       `currentTime ${r.toFixed(3)} / start ${expectStart}`,
     );
-    // (7) Próximo no meio da fala.
+    // Etapa 3 com voz: o pin no meio da fala interrompe o áudio e avança.
+    await p.waitForTimeout(400);
+    const el3 = await p.evaluateHandle(() => window.__nexo.voice.element);
+    await p.click(PIN);
+    await p.waitForTimeout(50);
+    // O áudio para na hora; o ícone voa até a sidebar (~500 ms) e só então o fluxo avança.
+    const pinMid = await p.evaluate((el) => ({ paused: el.paused }), el3);
+    const advanced = await p
+      .waitForFunction((id) => document.documentElement.dataset.coachStep === id, IDS[3], {
+        timeout: 3000,
+      })
+      .then(() => true)
+      .catch(() => false);
+    check(
+      'etapa 3 com voz: clicar no pin no meio da fala interrompe o áudio e avança',
+      pinMid.paused && advanced,
+      JSON.stringify({ ...pinMid, advanced }),
+    );
+    // (7) Próximo no meio da fala (etapa 4, que já começa falando).
+    await ready(p, IDS[3]);
+    await p.waitForFunction(() => !window.__nexo.voice.element?.paused, null, { timeout: 5000 });
     await p.waitForTimeout(400);
     const el = await p.evaluateHandle(() => window.__nexo.voice.element);
     await p.click('.coach-next');
@@ -820,15 +857,15 @@ const recorder = () => {
     );
     check(
       'Próximo no meio da fala: áudio interrompido e avança',
-      mid.paused && mid.step === IDS[3],
+      mid.paused && mid.step === IDS[4],
       JSON.stringify(mid),
     );
-    // A voz segue ligada: a etapa 4 fala. (6) Pausar e avançar leva a seguinte ao modo sem voz.
-    await ready(p, IDS[3]);
+    // A voz segue ligada: a etapa 5 fala. (6) Pausar e avançar leva a seguinte ao modo sem voz.
+    await ready(p, IDS[4]);
     await p.waitForFunction(() => !window.__nexo.voice.element?.paused, null, { timeout: 5000 });
     await p.click('.coach-audio'); // pausa
     await p.click('.coach-next');
-    await ready(p, IDS[4]);
+    await ready(p, IDS[5]);
     await p.waitForTimeout(300);
     const off = await snap(p);
     check(
@@ -881,6 +918,256 @@ const recorder = () => {
     await c.close();
   }
   check('voz: sem erros', errors.length === 0, errors.join(' | '));
+}
+
+// ---------- 9. Etapa 3: avançar favoritando pelo pin do card ----------
+{
+  const { page, context, errors } = await newPage();
+  const stepIs = () => page.evaluate(() => document.documentElement.dataset.coachStep);
+  const pinState = () =>
+    page.evaluate((sel) => {
+      const pin = document.querySelector(sel);
+      return {
+        pressed: pin?.getAttribute('aria-pressed'),
+        label: pin?.getAttribute('aria-label'),
+        pulsing: !!pin?.classList.contains('is-pulsing'),
+        favItems: document.querySelectorAll('[data-coach="nav-fav-conversas"]').length,
+        nextVisible: getComputedStyle(document.querySelector('.coach-next-wrap')).visibility,
+        nextDisabled: document.querySelector('.coach-next').disabled,
+      };
+    }, PIN);
+  await page.goto(`${base}?onboarding=reset&step=3`);
+  await ready(page, 'conversas');
+  // Mais que o timer mínimo sem voz (6 s): nada avança sozinho nesta etapa.
+  await page.waitForTimeout(7200);
+  const idle = await pinState();
+  check(
+    'etapa 3: sem "Próximo" (rodapé igual) e sem avanço automático; pin pulsando',
+    (await stepIs()) === 'conversas' &&
+      idle.nextVisible === 'hidden' &&
+      idle.nextDisabled &&
+      idle.pulsing &&
+      idle.pressed === 'false' &&
+      idle.label === 'Fixar Conversas no menu',
+    JSON.stringify(idle),
+  );
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(300);
+  check('etapa 3: seta direita não avança', (await stepIs()) === 'conversas');
+  await page.hover(PIN);
+  const tip = await page.evaluate(() => ({
+    shown: !document.querySelector('.coach-action-tip').hidden,
+    text: document.querySelector('.coach-action-tip').textContent,
+    cursor: getComputedStyle(document.querySelector('[data-coach="fav-conversas"]')).cursor,
+  }));
+  check(
+    'etapa 3: pin com cursor pointer e "Fixar no menu" no hover',
+    tip.shown && tip.text === 'Fixar no menu' && tip.cursor === 'pointer',
+    JSON.stringify(tip),
+  );
+  await page.click(PIN);
+  await ready(page, 'favoritas');
+  const after = await pinState();
+  const hl = await page.evaluate(
+    () =>
+      document
+        .querySelector('[data-coach="nav-fav-conversas"]')
+        ?.classList.contains('is-coach-target') ?? false,
+  );
+  check(
+    'clique no pin: favorita (pin pressionado), item na sidebar e avança para a 4 com o destaque nele',
+    after.pressed === 'true' && after.favItems === 1 && hl,
+    JSON.stringify({ after, hl }),
+  );
+  await page.waitForTimeout(300);
+  await page.click('.coach-back');
+  await ready(page, 'conversas');
+  await page.waitForTimeout(450);
+  const back = await pinState();
+  check(
+    'voltar da 4 para a 3: item sai da sidebar, pin volta ao normal e o pulso recomeça',
+    back.favItems === 0 && back.pressed === 'false' && back.pulsing,
+    JSON.stringify(back),
+  );
+  // Teclado: Enter e Espaço com o foco no pin favoritam e avançam.
+  for (const key of ['Enter', ' ']) {
+    await page.focus(PIN);
+    await page.keyboard.press(key);
+    await ready(page, 'favoritas');
+    const k = await pinState();
+    check(
+      `teclado: ${key === ' ' ? 'Espaço' : 'Enter'} com foco no pin favorita e avança`,
+      k.favItems === 1 && k.pressed === 'true',
+      JSON.stringify(k),
+    );
+    await page.waitForTimeout(300);
+    await page.click('.coach-back');
+    await ready(page, 'conversas');
+    await page.waitForTimeout(450);
+  }
+  check('etapa 3: sem erros', errors.length === 0, errors.join(' | '));
+  await context.close();
+}
+
+// ---------- 10. Destaque idêntico à tela sem overlay (pixel central do alvo) ----------
+{
+  const pixelAt = async (p, sel) => {
+    const r = await p.evaluate((sel) => {
+      const b = document.querySelector(sel).getBoundingClientRect();
+      return { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) };
+    }, sel);
+    const png = PNG.sync.read(
+      await p.screenshot({ clip: { x: r.x, y: r.y, width: 1, height: 1 } }),
+    );
+    return [png.data[0], png.data[1], png.data[2]];
+  };
+  const diffs = [];
+  for (let i = 0; i < IDS.length; i++) {
+    const { page: a, context: ca } = await newPage();
+    await a.goto(`${base}?onboarding=reset&step=${i + 1}`);
+    await ready(a, IDS[i]);
+    await a.evaluate(() => window.__nexo.voice.pause());
+    await a.mouse.move(1439, 899);
+    await a.waitForTimeout(700);
+    const sel = await a.evaluate(
+      () => `[data-coach="${document.querySelector('.is-coach-target').dataset.coach}"]`,
+    );
+    const on = await pixelAt(a, sel);
+    await ca.close();
+    const { page: b, context: cb } = await newPage();
+    await b.goto(
+      `${base}preview.html${i > ACTION_STEP ? '?fav=conversas' : ''}#${ROUTES[i].slice(1)}`,
+    );
+    await b.waitForSelector(sel);
+    await b.mouse.move(1439, 899);
+    await b.waitForTimeout(900);
+    const off = await pixelAt(b, sel);
+    await cb.close();
+    diffs.push({
+      step: i + 1,
+      sel,
+      on,
+      off,
+      d: Math.max(...on.map((v, k) => Math.abs(v - off[k]))),
+    });
+  }
+  check(
+    'destaque: pixel central de cada alvo igual com e sem o onboarding (9 etapas, tolerância 2)',
+    diffs.every((x) => x.d <= 2),
+    diffs.map((x) => `${x.step}:${x.d}`).join(' '),
+  );
+}
+
+// ---------- 11. Etapa 9: vídeo em loop no topo do tooltip ----------
+{
+  const loopState = (p) =>
+    p.evaluate(() => {
+      const v = document.querySelector('.coach-media video.coach-loop');
+      const img = document.querySelector('.coach-media img.coach-poster');
+      const media = document.querySelector('.coach-media').getBoundingClientRect();
+      const r = v?.getBoundingClientRect();
+      return {
+        video: !!v,
+        playing: !!v && !v.paused && v.currentTime > 0,
+        muted: v?.muted,
+        loop: v?.loop,
+        controls: v?.controls,
+        fit: v ? getComputedStyle(v).objectFit : null,
+        sources: v ? [...v.querySelectorAll('source')].map((s) => s.type) : [],
+        poster: !!img && img.complete && img.naturalWidth > 0,
+        size: r ? [Math.round(r.width), Math.round(r.height)] : null,
+        media: [Math.round(media.width), Math.round(media.height)],
+      };
+    });
+  const { page, context, errors } = await newPage();
+  await page.goto(`${base}?onboarding=reset&step=9`);
+  await ready(page, 'waz');
+  await page.waitForFunction(
+    () => {
+      const v = document.querySelector('video.coach-loop');
+      return v && !v.paused && v.currentTime > 0.2;
+    },
+    null,
+    { timeout: 8000 },
+  );
+  const on = await loopState(page);
+  const ring = await page.evaluate(() => window.__nexo.voice.lastFrame?.progress ?? 0);
+  check(
+    'etapa 9: vídeo mudo em loop, sem controles, WebM antes do MP4, cobrindo o topo (378×210); o timer segue',
+    on.playing &&
+      on.muted &&
+      on.loop &&
+      !on.controls &&
+      on.fit === 'cover' &&
+      on.sources.join(',') === 'video/webm,video/mp4' &&
+      on.size?.join('x') === on.media.join('x') &&
+      on.media.join('x') === '378x210' &&
+      ring > 0,
+    JSON.stringify({ on, ring }),
+  );
+  // Aba em segundo plano: pausa; ao voltar, continua.
+  const vis = await page.evaluate(async () => {
+    const v = document.querySelector('video.coach-loop');
+    const set = (hidden) => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    set(true);
+    const hiddenPaused = v.paused;
+    set(false);
+    await new Promise((r) => setTimeout(r, 300));
+    return { hiddenPaused, resumed: !v.paused };
+  });
+  check(
+    'etapa 9: o vídeo pausa com a aba em segundo plano e volta',
+    vis.hiddenPaused && vis.resumed,
+    JSON.stringify(vis),
+  );
+  // Saindo da etapa 9 (Voltar): o vídeo para e sai.
+  const handle = await page.evaluateHandle(() => document.querySelector('video.coach-loop'));
+  await page.click('.coach-back');
+  await page.waitForTimeout(150);
+  const left = await page.evaluate((v) => ({ paused: v.paused, attached: v.isConnected }), handle);
+  check(
+    'etapa 9: sair da etapa pausa e remove o vídeo',
+    left.paused && !left.attached,
+    JSON.stringify(left),
+  );
+  check('etapa 9 (vídeo): sem erros', errors.length === 0, errors.join(' | '));
+  await context.close();
+
+  // Movimento reduzido: só a capa.
+  {
+    const { page: p, context: c } = await newPage({ reducedMotion: 'reduce' });
+    await p.goto(`${base}?onboarding=reset&step=9`);
+    await ready(p, 'waz');
+    await p.waitForTimeout(800);
+    const r = await loopState(p);
+    check(
+      'etapa 9 com movimento reduzido: só a capa, sem vídeo',
+      !r.video && r.poster,
+      JSON.stringify(r),
+    );
+    await c.close();
+  }
+  // Falha ao carregar: a capa fica no lugar.
+  {
+    const { page: p, context: c } = await newPage({ allowWarning: /waz-nexo|Failed to load/ });
+    await p.route(/waz-nexo\.(webm|mp4)/, (route) => route.abort());
+    await p.goto(`${base}?onboarding=reset&step=9`);
+    await ready(p, 'waz');
+    await p.waitForTimeout(1500);
+    const r = await loopState(p);
+    const h = await p.evaluate(
+      () => document.querySelector('.coach-tooltip').getBoundingClientRect().height,
+    );
+    check(
+      'etapa 9: vídeo que falha sai e a capa fica, sem quebrar o layout',
+      !r.video && r.poster && r.media.join('x') === '378x210' && h > 300,
+      JSON.stringify({ r, h }),
+    );
+    await c.close();
+  }
 }
 
 await browser.close();

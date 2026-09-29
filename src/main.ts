@@ -73,6 +73,8 @@ const CROSS_SCREEN = {
 const NEXO_RELAX = 0.1;
 
 const DONE_KEY = 'onboarding:done';
+/** Voo do ícone do gatilho até a sidebar ao favoritar (s). */
+const ACTION_FLY_S = 0.5;
 /** Espera depois do fim da fala antes de avançar sozinho (s). */
 const AUTO_ADVANCE_DELAY_S = 0.4;
 /** Site de demonstração: tour sempre do início. */
@@ -253,6 +255,11 @@ async function start(): Promise<void> {
       const step = STEPS[current];
       if (busy || closing || !step || step.voice !== id) return;
       cancelAutoAdvance();
+      // Etapa de ação: nunca avança sozinha; no fim da fala, o gatilho começa a pulsar.
+      if (step.advanceOn === 'action') {
+        coach.setActionPulse(true);
+        return;
+      }
       // Com voz: fim do áudio + 400 ms. Sem voz: o timer já é a espera.
       autoAdvance = gsap.delayedCall(spoken ? AUTO_ADVANCE_DELAY_S : 0, () => {
         autoAdvance = null;
@@ -291,6 +298,10 @@ async function start(): Promise<void> {
       void go(index, index - 1);
     },
     onClose: () => void finish(false),
+    onAction: (index, el) => {
+      if (busy || closing || index !== current) return;
+      void runAction(index, el);
+    },
     onVoiceToggle: () => {
       if (busy) return;
       if (voice.isVoice && voice.state === 'playing') voice.pause();
@@ -299,6 +310,7 @@ async function start(): Promise<void> {
         // Sem voz (ou fala já terminada): liga a voz e fala a etapa do início, anel do zero.
         voiceOn = true;
         cancelAutoAdvance();
+        coach.setActionPulse(false); // na etapa de ação, volta a pulsar quando a fala acabar
         coach.prepareText(true);
         void voice.enableVoice();
       }
@@ -333,11 +345,87 @@ async function start(): Promise<void> {
     await coach.showTooltip();
     if (closing || STEPS[current] !== step) return;
     setState('ready', step.id);
-    // Timer de leitura (sem voz) ou fala: começa com o tooltip já na tela.
-    void voice.start(step.voice, voiceOn);
+    if (step.advanceOn === 'action' && !voiceOn) {
+      // Etapa de ação sem voz: sem timer e sem avanço automático; o gatilho pulsa.
+      voice.arm(step.voice);
+      coach.setActionPulse(true);
+    } else {
+      // Timer de leitura (sem voz) ou fala: começa com o tooltip já na tela.
+      void voice.start(step.voice, voiceOn);
+    }
     const next = STEPS[STEPS.indexOf(step) + 1];
     if (next) voice.preload(next.voice);
     if (step.tooltip.kind === 'preview') coach.startDemo();
+    if (step.tooltip.kind === 'loop') coach.startLoop();
+  }
+
+  // ---------- ação da etapa (advanceOn 'action') ----------
+  /**
+   * O usuário fez a ação da etapa (ex.: clicou no pin): efeito (favorito), feedback de
+   * escala no gatilho (0,85 → 1,1 → 1, 250 ms), o ícone voa até o lugar dele na sidebar
+   * (500 ms, em arco) e o fluxo avança com a transição normal.
+   */
+  async function runAction(index: number, el: HTMLElement): Promise<void> {
+    const step = STEPS[index];
+    if (!step?.action) return;
+    busy = true;
+    coach.setBusy(true);
+    silence();
+    step.action.run();
+    const reduced = prefersReducedMotion();
+    gsap.to(el, {
+      keyframes: reduced
+        ? [{ scale: 1, duration: 0.25 }]
+        : [
+            { scale: 0.85, duration: 0 },
+            { scale: 1.1, duration: 0.12, ease: 'power2.out' },
+            { scale: 1, duration: 0.13, ease: 'power2.inOut' },
+          ],
+      clearProps: 'transform',
+    });
+    const dest = step.action.flyTo ? document.querySelector<HTMLElement>(step.action.flyTo) : null;
+    if (dest) await flyIcon(el, dest, reduced ? 0.2 : ACTION_FLY_S);
+    if (closing || current !== index) return;
+    void go(index, index + 1);
+  }
+
+  /** Um clone do ícone do destino viaja do gatilho até ele, em arco, acima do overlay. */
+  function flyIcon(from: HTMLElement, to: HTMLElement, duration: number): Promise<void> {
+    const icon = to.querySelector('img');
+    if (!icon) return Promise.resolve();
+    // O item acabou de entrar na sidebar (fade); ele só aparece quando o ícone pousa.
+    gsap.killTweensOf(to);
+    gsap.set(to, { opacity: 0, scale: 1 });
+    const a = from.getBoundingClientRect();
+    const b = icon.getBoundingClientRect();
+    const fly = document.createElement('img');
+    fly.src = icon.src;
+    fly.alt = '';
+    fly.className = 'coach-fly';
+    fly.width = b.width;
+    fly.height = b.height;
+    document.body.append(fly);
+    const p0 = { x: a.x + a.width / 2 - b.width / 2, y: a.y + a.height / 2 - b.height / 2 };
+    const p2 = { x: b.x, y: b.y };
+    const p1 = { x: (p0.x + p2.x) / 2, y: Math.min(p0.y, p2.y) - 90 };
+    const st = { t: 0 };
+    return gsap
+      .to(st, {
+        t: 1,
+        duration,
+        ease: 'power2.inOut',
+        onUpdate: () => {
+          const u = 1 - st.t;
+          const x = u * u * p0.x + 2 * u * st.t * p1.x + st.t * st.t * p2.x;
+          const y = u * u * p0.y + 2 * u * st.t * p1.y + st.t * st.t * p2.y;
+          fly.style.transform = `translate(${x}px, ${y}px)`;
+        },
+      })
+      .then(() => {
+        fly.remove();
+        gsap.to(to, { opacity: 1, duration: 0.15, clearProps: 'opacity,transform' });
+      })
+      .then(() => undefined);
   }
 
   // ---------- troca de etapa ----------

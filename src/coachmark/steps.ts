@@ -7,7 +7,8 @@
 // por espaços, uma palavra por <span>, para o grifo casar com a fala.
 //
 // Navegação nos dois sentidos: "Próximo" (→, Enter, clique no alvo quando ele é um item
-// de navegação: targetClickAdvances, ou o fim da fala + 400 ms) e "Voltar" (←). O
+// de navegação: advanceOn 'target', ou o fim do timer/da fala) e "Voltar" (←). A etapa 3
+// avança só pela ação do usuário (advanceOn 'action': favoritar pelo pin do card). O
 // estado do fluxo é DERIVADO da etapa (flowStateAt), a partir dos efeitos em
 // `completes`: voltar desfaz exatamente o que o avanço fez.
 
@@ -15,6 +16,7 @@ import type { Placement } from './placement';
 import type { Route } from '../app/router';
 import { VOICES } from '../voice/voice';
 import { asset } from '../utils/asset';
+import { appState } from '../app/state';
 
 export type { Route } from '../app/router';
 
@@ -32,17 +34,33 @@ export type Step = {
    */
   highlight: 'circle' | 'card' | 'row' | 'none';
   /**
-   * O alvo é um item de navegação: clicar nele avança o fluxo, como o "Próximo"
-   * (cursor pointer e hover no alvo). Nos outros alvos, o clique não navega.
+   * Como a etapa avança:
+   * - 'next': "Próximo", →/Enter ou o fim do timer/da fala;
+   * - 'target': também pelo clique no alvo (item de navegação: cursor pointer e hover);
+   * - 'action': SÓ por uma ação do usuário (`action`): sem "Próximo", sem timer e sem
+   *   avanço automático. Nos outros alvos, o clique não navega.
    */
-  targetClickAdvances: boolean;
+  advanceOn: 'next' | 'target' | 'action';
+  /** Com advanceOn 'action': o elemento que dispara a ação e o efeito dela. */
+  action?: {
+    selector: string;
+    /** Rótulo acessível (e do mini tooltip no hover). */
+    label: string;
+    hint: string;
+    run: () => void;
+    /** Para onde o ícone voa depois da ação (o item recém-criado na sidebar). */
+    flyTo?: string;
+  };
   /** Fala gravada da etapa (chave do voiceManifest.json): áudio, texto e tempos. */
   voice: string;
   /** Texto do tooltip (= texto do manifesto, sem título; uma frase na maioria). */
   text: string;
   tooltip: {
-    /** 'text' | 'preview' (demo do cursor) | 'video' (pôster + Play) | 'image'. */
-    kind: 'text' | 'preview' | 'video' | 'image';
+    /**
+     * 'text' | 'preview' (demo do cursor) | 'video' (pôster + Play) | 'image' |
+     * 'loop' (vídeo mudo em loop, sem controles, que começa quando o tooltip termina de entrar).
+     */
+    kind: 'text' | 'preview' | 'video' | 'image' | 'loop';
     placement: 'right' | 'left' | 'top' | 'bottom';
     /**
      * Posição do tooltip medida no Figma, relativa ao alvo:
@@ -51,7 +69,13 @@ export type Step = {
      */
     offset: { x: number; y: number };
     /** Mídia 378×210 no topo do tooltip. */
-    media?: { poster: string; alt: string; src?: string };
+    media?: {
+      poster: string;
+      alt: string;
+      src?: string;
+      /** 'loop': fontes em ordem de preferência (WebM primeiro, MP4 de alternativa). */
+      sources?: { src: string; type: string }[];
+    };
   };
   nexo: {
     /**
@@ -83,7 +107,7 @@ export const STEPS: Step[] = [
     route: '/home',
     target: '[data-coach="nav-ferramentas"]',
     highlight: 'circle',
-    targetClickAdvances: true,
+    advanceOn: 'target',
     voice: 'step-01-ferramentas',
     tooltip: { kind: 'text', placement: 'right', offset: { x: 19, y: -34 } },
     nexo: { offset: { x: 130.3, y: -12.1 }, facing: 'left', gesture: 'wave' },
@@ -94,7 +118,7 @@ export const STEPS: Step[] = [
     route: '/ferramentas',
     target: '[data-coach="ferramentas-chips"]',
     highlight: 'none',
-    targetClickAdvances: false,
+    advanceOn: 'next',
     voice: 'step-02-agentes',
     tooltip: { kind: 'text', placement: 'bottom', offset: { x: 505, y: 38 } },
     nexo: { offset: { x: 138.3, y: -26.2 }, facing: 'left', gesture: 'present' },
@@ -105,7 +129,15 @@ export const STEPS: Step[] = [
     route: '/ferramentas',
     target: '[data-coach="card-conversas"]',
     highlight: 'card',
-    targetClickAdvances: false,
+    // Avança favoritando: o pin do card é o gatilho (sem "Próximo" e sem timer).
+    advanceOn: 'action',
+    action: {
+      selector: '[data-coach="fav-conversas"]',
+      label: 'Fixar Conversas no menu',
+      hint: 'Fixar no menu',
+      run: () => appState.setFavorite('conversas', true),
+      flyTo: '[data-coach="nav-fav-conversas"]',
+    },
     voice: 'step-03-conversas',
     tooltip: { kind: 'preview', placement: 'right', offset: { x: 37, y: 0 } },
     nexo: { offset: { x: 138.3, y: -145.2 }, facing: 'left', gesture: 'point' },
@@ -118,7 +150,7 @@ export const STEPS: Step[] = [
     route: '/ferramentas',
     target: '[data-coach="nav-fav-conversas"]',
     highlight: 'circle',
-    targetClickAdvances: true,
+    advanceOn: 'target',
     voice: 'step-04-favoritas',
     tooltip: { kind: 'text', placement: 'right', offset: { x: 51, y: -56 } },
     nexo: { offset: { x: 163.3, y: -15.7 }, facing: 'left', gesture: 'point' },
@@ -129,7 +161,7 @@ export const STEPS: Step[] = [
     route: '/ferramentas',
     target: '[data-coach="nav-seu-negocio"]',
     highlight: 'circle',
-    targetClickAdvances: true,
+    advanceOn: 'target',
     voice: 'step-05-seu-negocio',
     tooltip: { kind: 'text', placement: 'right', offset: { x: 23, y: -54 } },
     nexo: { offset: { x: 152.3, y: -29.7 }, facing: 'left', gesture: 'point' },
@@ -140,7 +172,7 @@ export const STEPS: Step[] = [
     route: '/seu-negocio',
     target: '[data-coach="card-base"]',
     highlight: 'none',
-    targetClickAdvances: false,
+    advanceOn: 'next',
     voice: 'step-06-base',
     tooltip: {
       kind: 'video',
@@ -161,7 +193,7 @@ export const STEPS: Step[] = [
     route: '/seu-negocio',
     target: '[data-coach="card-produtos"]',
     highlight: 'none',
-    targetClickAdvances: false,
+    advanceOn: 'next',
     voice: 'step-07-produtos',
     tooltip: {
       kind: 'video',
@@ -181,7 +213,7 @@ export const STEPS: Step[] = [
     route: '/seu-negocio',
     target: '[data-coach="card-integracoes"]',
     highlight: 'none',
-    targetClickAdvances: false,
+    advanceOn: 'next',
     voice: 'step-08-integracoes',
     tooltip: { kind: 'text', placement: 'right', offset: { x: 20, y: 15 } },
     nexo: { offset: { x: 128.3, y: -36.7 }, facing: 'left', gesture: 'point' },
@@ -192,13 +224,20 @@ export const STEPS: Step[] = [
     route: '/seu-negocio',
     target: '[data-coach="nav-waz"]',
     highlight: 'none',
-    targetClickAdvances: false,
+    advanceOn: 'next',
     voice: 'step-09-waz',
     tooltip: {
-      kind: 'image',
+      kind: 'loop',
       placement: 'right',
       offset: { x: 33, y: -132 },
-      media: { poster: asset('images/onboarding/kaue-waz.jpg'), alt: 'Kauê e o Waz' },
+      media: {
+        poster: asset('video/waz-nexo-poster.jpg'),
+        alt: 'Kauê e o Waz',
+        sources: [
+          { src: asset('video/waz-nexo.webm'), type: 'video/webm' },
+          { src: asset('video/waz-nexo.mp4'), type: 'video/mp4' },
+        ],
+      },
     },
     nexo: { offset: { x: 152.3, y: -62.7 }, facing: 'left', gesture: 'wave' },
   }),
