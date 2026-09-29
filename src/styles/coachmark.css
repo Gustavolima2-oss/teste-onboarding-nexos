@@ -183,27 +183,30 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   cursor: pointer;
 }
 
-/* Modo silencioso (autoplay bloqueado): "sem som" com um pulso discreto. */
-.coach-audio[data-voice='muted'] img {
-  animation: coach-muted-pulse 1.6s ease-in-out infinite;
+/* Ícone = ação do clique: alto-falante (voz desligada ou pausada) ou pausa (tocando).
+   Os dois ficam sobrepostos e trocam por crossfade, sem mudar tamanho nem posição. */
+.coach-audio {
+  position: relative;
 }
 
-@keyframes coach-muted-pulse {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.45;
-    transform: scale(0.9);
-  }
+.coach-audio-icon {
+  position: absolute;
+  inset: 0;
+  transition: opacity 120ms linear;
+}
+
+.coach-audio-icon--pause,
+.coach-audio[data-voice='playing'] .coach-audio-icon--speaker {
+  opacity: 0;
+}
+
+.coach-audio[data-voice='playing'] .coach-audio-icon--pause {
+  opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .coach-audio[data-voice='muted'] img {
-    animation: none;
-    opacity: 0.6;
+  .coach-audio-icon {
+    transition: none;
   }
 }
 

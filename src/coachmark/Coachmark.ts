@@ -82,17 +82,18 @@ export type StepLayout = {
   nexoPlacement: Placement;
 };
 
-export type VoiceButtonState = 'playing' | 'paused' | 'muted';
+/** O ícone mostra a AÇÃO do clique: alto-falante (voz desligada ou pausada) ou pausa (tocando). */
+export type VoiceButtonState = 'off' | 'playing' | 'paused';
 
 /** Botões do Figma: "Próximo" 87×40 e "Finalizar" 89×40 (etapa 9). */
 const NEXT_SIZE = { next: { w: 87, h: 40 }, final: { w: 89, h: 40 } };
 /** Espessura do anel de progresso ("Subtract", 2483:5698). */
 const RING_STROKE = 3.5;
 
-const voiceIcon = (state: VoiceButtonState) =>
-  state === 'paused'
-    ? `<img src="${asset('images/onboarding/pause.svg')}" alt="" width="18" height="18" />`
-    : `<img src="${asset('images/onboarding/speaker-high.svg')}" alt="" width="18" height="18"${state === 'muted' ? ' class="is-muted"' : ''} />`;
+/** Os dois ícones ficam sobrepostos; o estado só troca a opacidade (crossfade de 120 ms). */
+const VOICE_ICONS = `
+  <img class="coach-audio-icon coach-audio-icon--speaker" src="${asset('images/onboarding/speaker-high.svg')}" alt="" width="18" height="18" />
+  <img class="coach-audio-icon coach-audio-icon--pause" src="${asset('images/onboarding/pause.svg')}" alt="" width="18" height="18" />`;
 
 export class Coachmark {
   readonly overlay: HTMLDivElement;
@@ -178,7 +179,8 @@ export class Coachmark {
     this.audioButton = q<HTMLButtonElement>('.coach-audio');
     this.nextButton = q<HTMLButtonElement>('.coach-next');
     this.backButton = q<HTMLButtonElement>('.coach-back');
-    this.setVoiceState('playing');
+    this.audioButton.innerHTML = VOICE_ICONS;
+    this.setVoiceState('off');
   }
 
   get currentIndex(): number {
@@ -346,23 +348,27 @@ export class Coachmark {
   }
 
   /**
-   * Estado do alto-falante: 'playing' (falando; clicar pausa), 'paused' (clicar retoma)
-   * ou 'muted' (modo silencioso por autoplay bloqueado; clicar liga o som, com pulso).
+   * Estado do alto-falante, sempre mostrando a ação do clique: 'off' (voz desligada:
+   * alto-falante, "Ouvir o Nexo"), 'playing' (pausa, "Pausar", aria-pressed) ou 'paused'
+   * (alto-falante, "Continuar ouvindo").
    */
   setVoiceState(state: VoiceButtonState): void {
     if (state === this.voiceState) return;
     this.voiceState = state;
     const b = this.audioButton;
-    const label = {
-      playing: 'Pausar a fala',
-      paused: 'Retomar a fala',
-      muted: 'Ligar o som da fala',
-    }[state];
-    b.setAttribute('aria-pressed', String(state === 'paused'));
+    const label = { off: 'Ouvir o Nexo', playing: 'Pausar', paused: 'Continuar ouvindo' }[state];
+    b.setAttribute('aria-pressed', String(state === 'playing'));
     b.setAttribute('aria-label', label);
     b.title = label;
     b.dataset.voice = state;
-    b.innerHTML = voiceIcon(state);
+  }
+
+  /**
+   * Texto no início da etapa: sem voz, inteiro em branco; com voz, todo cinza (acende
+   * palavra a palavra). O anel volta a zero.
+   */
+  prepareText(voice: boolean): void {
+    this.setVoiceProgress(0, voice ? 0 : this.wordEls.length);
   }
 
   /**

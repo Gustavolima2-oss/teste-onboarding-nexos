@@ -29,77 +29,99 @@ Atualize `steps.ts` para as 9 etapas, com alvos, posições e destaques extraíd
 A pasta `nexo-voice/` que acompanha este prompt deve ser copiada para a raiz do app. Ela contém:
 
 - `voices.json`: texto e origem do áudio de cada etapa. A etapa 1 já vem como arquivo em `sources/`; as outras vêm por link do Magnific, que **expira por volta de 04/10/2026**.
-- `robotize.py`: o filtro de voz aprovado ("B, grave médio"). **Não altere nenhum parâmetro.** Ele preserva a duração do áudio.
+- `robotize.py`: o filtro de voz aprovado (voz do **Tiago Lima**, tom 3 semitons acima com o timbre preservado e 5% de vocoder, um toque de robô bem leve). **Não altere nenhum parâmetro.** Ele preserva a duração do áudio.
 - `align.py`: gera o tempo de início e fim de cada palavra. Usa faster-whisper e, sem ele, cai num plano B por energia e sílabas.
 - `build_voices.py`: roda tudo e grava `public/audio/nexo/<id>.mp3` e `src/voice/voiceManifest.json`.
 - `reference/nexo-voz-aprovada.mp3`: o som exato aprovado, para conferência.
 
 Passos:
-1. Instale as dependências: `ffmpeg` (brew), e `pip install numpy scipy faster-whisper`.
+1. Instale as dependências: `ffmpeg` (brew) e `pip install numpy scipy faster-whisper`. O filtro depende do **rubberband** dentro do ffmpeg: confira com `ffmpeg -filters | grep rubberband`. O ffmpeg do Homebrew já traz; se não aparecer, rode `brew reinstall ffmpeg`. O `build_voices.py` para com uma mensagem clara se faltar.
 2. Rode `python3 nexo-voice/build_voices.py` na raiz do app.
 3. **Confira o filtro:** o `public/audio/nexo/step-01-ferramentas.mp3` gerado deve ser idêntico ao `reference/nexo-voz-aprovada.mp3` (compare as amostras; a correlação tem que dar 1,0).
 4. **Confira as marcações:** abra o `voiceManifest.json` e verifique se todas as etapas saíram com `"method": "faster-whisper"`. Para cada etapa, os tempos devem ser crescentes, sem sobreposição, e a última palavra deve terminar antes da duração do áudio. Se alguma etapa cair no plano B, registre qual.
 5. **Versione** os MP3 finais e o manifesto no repositório. A pasta `nexo-voice/.clean/` (áudio limpo intermediário) vai para o `.gitignore`.
 6. Os caminhos de áudio devem passar por `import.meta.env.BASE_URL`, para funcionar no GitHub Pages.
 
-## 2. Grifo palavra por palavra
+**Se você já rodou o build com a voz anterior (Preston):** apague `public/audio/nexo/`, `src/voice/voiceManifest.json` e `nexo-voice/.clean/`, e rode o build de novo. A voz mudou para o Tiago Lima e todos os áudios e tempos precisam ser regerados.
 
-- O texto do tooltip é renderizado como uma sequência de `<span>` por palavra, na ordem do manifesto (o texto exibido e o manifesto usam a mesma divisão por espaços).
-- Estado inicial: todas as palavras em cinza (cor do Figma).
-- Quando `currentTime` atinge o `start` de uma palavra, ela fica branca com uma transição curta (~80 ms) e **permanece branca**: o grifo é progressivo, acumulando as palavras já faladas, como no Figma.
+## 2. Dois modos: sem voz (padrão) e com voz
+
+O onboarding **começa sempre sem voz**. A voz só entra quando o usuário clica no ícone de alto-falante.
+
+### Modo sem voz (padrão)
+- O texto do tooltip aparece **inteiro em branco** desde o início. Sem grifo, sem palavras em cinza.
+- O gradiente do botão "Próximo" funciona como **timer** e, ao chegar a 100%, o fluxo **avança sozinho**, igual ao modo com voz.
+- Duração do timer: `duração do áudio da etapa × 1,25`, com mínimo de 3 s. Deixe o fator e o mínimo como constantes nomeadas (`SILENT_TIMER_FACTOR`, `SILENT_TIMER_MIN_MS`), para ajustar fácil. É um pouco mais lento que a fala, para dar tempo de leitura.
+- A boca do Nexo fica no estado padrão (sorriso, como no print 3), com as piscadas normais. Ele não "fala" sem som.
+
+### Modo com voz
+- Clicar no alto-falante **liga a voz**: o áudio da etapa atual começa do início, o texto volta a ficar todo cinza e as palavras **acendem em branco uma a uma**, sincronizadas com a fala, e ficam brancas (grifo progressivo, como no Figma).
+- O gradiente do "Próximo" **reinicia do zero** e passa a acompanhar o áudio (`currentTime / duration`). Ao terminar o áudio, espere ~400 ms e avance sozinho.
+- A voz **continua ligada nas etapas seguintes**: cada nova etapa começa a falar quando o tooltip termina de entrar.
 - A sincronia é lida do `audio.currentTime` a cada `requestAnimationFrame`, nunca de timers próprios, para não derivar.
 - Emoji e pontuação acompanham a palavra a que estão colados.
-- Acessibilidade: o texto completo continua disponível para leitores de tela desde o início (o grifo é só visual, com `aria-hidden` nos estados intermediários e o texto inteiro em `aria-describedby`).
 
-## 3. Botão "Próximo" com gradiente de progresso e avanço automático
+### Pausar
+- Com a voz tocando, clicar no alto-falante de novo **pausa**: o áudio para, o gradiente congela no ponto atual e o grifo **mantém a palavra que estava sendo dita** acesa. O avanço automático fica suspenso.
+- Clicar outra vez **retoma** do **início da palavra em que parou** (`currentTime = word.start`), com o gradiente continuando dali.
+- Se o usuário avançar (Próximo, Voltar ou clique no alvo) com a voz pausada, a próxima etapa entra no **modo sem voz** (texto branco, timer). Ou seja: pausar vale como "desligar" para as etapas seguintes, até ele clicar no alto-falante de novo.
 
-- Siga o Figma para o gradiente (cores, direção e raio). Ele preenche o botão de 0% a 100% ao longo da duração do áudio da etapa, proporcional ao `currentTime / duration`.
-- Ao chegar a 100%, espere ~400 ms e **avance sozinho** para a próxima etapa, com a mesma transição do clique.
-- Clicar em "Próximo" antes do fim interrompe a fala e avança imediatamente. O mesmo vale para "Voltar".
+### Estados do ícone
+O ícone tem **dois visuais**, e mostra sempre a ação que o clique vai fazer:
+- **Alto-falante** (o ícone atual do Figma): aparece quando a voz está **desligada** (modo padrão) ou **pausada**. Clicar liga ou retoma a voz.
+- **Pausa** (dois tracinhos verticais, ⏸): aparece **enquanto a voz está tocando**. Clicar pausa, e o ícone volta a ser o alto-falante.
+
+A troca entre os dois é imediata, com um crossfade curto (~120 ms) e sem mudar o tamanho nem a posição do botão. O ícone de pausa deve seguir o mesmo tamanho, traço e cor do alto-falante do Figma (18×18 px); use o mesmo estilo de ícone (Phosphor, como o `SpeakerHigh`), por exemplo o `Pause`. Quando o áudio da etapa termina sozinho, o ícone volta a mostrar o de pausa na etapa seguinte assim que ela começar a falar.
+
+Acessibilidade: `aria-label` muda junto ("Ouvir o Nexo", "Pausar", "Continuar ouvindo"), com `aria-pressed="true"` enquanto a voz toca. Atalho: barra de espaço alterna, quando o foco estiver dentro do tooltip.
+
+### Acessibilidade
+O texto completo fica disponível para leitores de tela desde o início nos dois modos (o grifo é só visual; o texto inteiro vai no `aria-describedby`).
+
+## 3. Botão "Próximo" com gradiente
+
+- Siga o Figma para o gradiente (cores, direção e raio). Ele preenche o botão de 0% a 100% ao longo da duração do timer (modo sem voz) ou do áudio (modo com voz).
+- Clicar em "Próximo" antes do fim interrompe tudo e avança imediatamente. O mesmo vale para "Voltar".
 - Na última etapa, o preenchimento completo encerra o onboarding, como o clique no último "Próximo".
+- Trocar de modo no meio da etapa (ligar a voz) reinicia o gradiente do zero, porque a duração muda.
 
-## 4. Pausa (ícone de alto-falante)
-
-- O ícone de alto-falante vira **pausar/retomar**.
-- Ao pausar: o áudio para, o gradiente congela no ponto atual, o grifo **mantém a palavra que estava sendo dita** grifada, e o avanço automático fica suspenso.
-- Ao retomar: o áudio volta do **início da palavra em que parou** (`currentTime = word.start`), para a frase não voltar picotada. O gradiente continua dali.
-- O ícone muda de estado (alto-falante ou pausa) conforme o Figma, com `aria-pressed` e `aria-label` corretos.
-- Atalho: barra de espaço pausa e retoma, quando o foco estiver dentro do tooltip.
-
-## 5. Política de autoplay do navegador
-
-Navegadores bloqueiam áudio antes de uma interação do usuário, o que afeta a etapa 1 no primeiro acesso.
-- Tente `audio.play()`. Se for bloqueado, rode a etapa em **modo silencioso**: o grifo e o gradiente avançam por um relógio interno usando os mesmos tempos do manifesto, a boca anima igual, e o ícone de alto-falante aparece como "sem som", com um pulso discreto.
-- Clicar no ícone nesse estado liga o som e continua a partir da palavra atual, sincronizado.
-- Qualquer clique do usuário (inclusive em "Próximo" ou no alvo destacado) já libera o áudio para as etapas seguintes; guarde isso num estado global.
-
-## 6. Boca sincronizada com a fala
+## 4. Boca sincronizada com a fala
 
 O rosto já existe (`NexoFace`). Ajuste a lógica:
-- **Falando** (uma palavra ativa, ou seja, `currentTime` entre o `start` e o `end` de alguma palavra): estado de fala, como no print de referência 4 (olhos + barras da boca subindo e descendo).
-- **Entre palavras, em pausas da frase, ao pausar ou ao terminar a fala:** a boca para na hora e volta ao padrão, como no print 3 (sorriso).
-- A altura das barras segue o volume real do áudio: `AnalyserNode` do WebAudio conectado ao elemento de áudio, lendo o RMS a cada frame, mapeado em 3 a 5 degraus. No modo silencioso (seção 5), use o padrão pseudoaleatório de antes.
+- **Só no modo com voz**, e só enquanto há uma palavra ativa (`currentTime` entre o `start` e o `end` de alguma palavra): estado de fala, como no print de referência 4 (olhos + barras da boca subindo e descendo).
+- **Entre palavras, em pausas da frase, ao pausar, ao terminar a fala e no modo sem voz:** a boca fica no padrão, como no print 3 (sorriso).
+- A altura das barras segue o volume real do áudio: `AnalyserNode` do WebAudio conectado ao elemento de áudio, lendo o RMS a cada frame, mapeado em 3 a 5 degraus.
 - Os olhos não mudam durante a fala, só dão os micro-pulsos de brilho.
-- Nada de a boca continuar mexendo depois que o som parou: a troca para o sorriso tem que acontecer no mesmo frame em que a palavra termina ou o áudio pausa.
+- A troca para o sorriso acontece no mesmo frame em que a palavra termina ou o áudio pausa. Nada de a boca continuar mexendo depois que o som parou.
+
+## 5. Autoplay
+
+Como a voz só começa depois de um clique no alto-falante, o bloqueio de autoplay dos navegadores deixa de ser problema: o clique libera o áudio. Nas etapas seguintes, o áudio pode tocar sozinho porque já houve interação. Mesmo assim, trate a rejeição do `audio.play()`: se falhar, volte ao modo sem voz naquela etapa, sem quebrar o fluxo, e registre no console.
+
+## 6. Pré-carga
+
+Pré-carregue o áudio da próxima etapa enquanto a atual é exibida, mesmo no modo sem voz (o timer depende da duração do áudio, que vem do manifesto, então não precisa esperar o download para começar).
 
 ## 7. Integração com o fluxo existente
 
-- A fala da etapa começa **quando o tooltip termina de entrar** (depois que o Nexo pousou), nunca durante o voo.
+- O timer e, no modo com voz, a fala da etapa começam **quando o tooltip termina de entrar** (depois que o Nexo pousou), nunca durante o voo.
 - Trocar de etapa (Próximo, Voltar, clique no alvo, avanço automático ou Esc) sempre para o áudio atual, reseta o grifo e o gradiente e devolve a boca ao padrão antes de qualquer outra animação.
-- Pré-carregue o áudio da próxima etapa enquanto a atual é exibida, para não haver atraso no início da fala.
-- Aba em segundo plano: pause o áudio e o avanço automático; ao voltar, retome do início da palavra, como na pausa manual.
+- Aba em segundo plano: pause o áudio, o timer e o avanço automático; ao voltar, retome de onde parou (no modo com voz, do início da palavra).
 - `prefers-reduced-motion`: a fala e o grifo continuam; o gradiente vira uma barra sem animação suave, e a boca anima em menos degraus.
 - `destroy()` também para e descarrega os áudios e fecha o AudioContext.
 
 ## 8. Testes
 
 Adicione ao teste automatizado:
-- cada uma das 9 etapas carrega o áudio correto e tem o número de spans igual ao de palavras do manifesto;
-- o avanço automático acontece em `duration + ~400 ms` (com tolerância);
-- pausar congela o gradiente e o grifo; retomar volta ao `start` da palavra ativa;
+- o onboarding começa no modo sem voz: texto todo branco, nenhum áudio tocando, gradiente avançando;
+- no modo sem voz, o avanço automático acontece em `max(duração × 1,25, 3 s)` (com tolerância);
+- clicar no alto-falante liga a voz: o áudio correto toca, o texto volta a cinza, o número de spans bate com o manifesto e o gradiente reinicia;
+- no modo com voz, o avanço automático acontece em `duração + ~400 ms`, e a etapa seguinte também começa falando;
+- pausar congela o gradiente e o grifo na palavra atual; retomar volta ao `start` dessa palavra;
+- avançar com a voz pausada leva a próxima etapa ao modo sem voz;
 - clicar em "Próximo" no meio da fala interrompe o áudio e avança;
-- modo silencioso quando o autoplay é bloqueado (simule a rejeição do `play()`);
-- a boca fica no padrão sempre que não há palavra ativa.
+- rejeição do `play()` cai no modo sem voz sem quebrar o fluxo;
+- a boca fica no padrão sempre que não há palavra ativa e durante todo o modo sem voz.
 
 ## 9. Entrega
 

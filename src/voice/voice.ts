@@ -1,11 +1,13 @@
 // Voz gravada do Nexo: MP3 por etapa (public/audio/nexo/) + tempos de cada palavra
 // (voiceManifest.json, gerado por nexo-voice/build_voices.py).
 //
-// O VoicePlayer é o relógio da fala. A cada quadro (gsap.ticker = requestAnimationFrame)
-// ele lê `audio.currentTime` — nunca timers próprios — e publica um VoiceFrame:
-// progresso (gradiente do "Próximo"), palavras já faladas (grifo), palavra ativa e
-// nível de volume (boca). Sem permissão de autoplay, roda em MODO SILENCIOSO: um relógio
-// interno com os mesmos tempos do manifesto, até o usuário ligar o som.
+// O VoicePlayer é o relógio de cada etapa, em dois modos:
+// - TIMER (padrão, sem voz): um relógio interno de max(duração × SILENT_TIMER_FACTOR,
+//   SILENT_TIMER_MIN_MS) enche o anel do "Próximo" e avança sozinho no fim. Texto inteiro
+//   em branco, boca parada.
+// - VOZ (depois do clique no alto-falante): o relógio é `audio.currentTime`, lido a cada
+//   quadro (gsap.ticker = requestAnimationFrame), nunca por timers próprios. Publica as
+//   palavras já ditas (grifo), a palavra ativa e o volume (boca).
 
 import { gsap } from 'gsap';
 import manifest from './voiceManifest.json';
@@ -21,6 +23,15 @@ export type VoiceClip = {
 };
 export const VOICES: Record<string, VoiceClip> = manifest;
 
+/** Modo sem voz: o timer dura a fala × este fator (um pouco mais lento, para ler)… */
+export const SILENT_TIMER_FACTOR = 1.25;
+/** …com este mínimo (ms). */
+export const SILENT_TIMER_MIN_MS = 3000;
+
+/** Duração do timer de leitura de uma etapa (s). */
+export const silentDuration = (clip: VoiceClip): number =>
+  Math.max(clip.duration * SILENT_TIMER_FACTOR, SILENT_TIMER_MIN_MS / 1000);
+
 /** Emoji ou pontuação solta: acompanha a palavra anterior e não mexe a boca. */
 export const isSymbolToken = (t: string): boolean => !/[\p{L}\p{N}]/u.test(t);
 
@@ -29,26 +40,26 @@ export type VoiceMode = 'idle' | 'playing' | 'paused' | 'ended';
 export type VoiceFrame = {
   id: string | null;
   mode: VoiceMode;
-  /** Sem permissão de áudio: relógio interno, sem som. */
-  silent: boolean;
-  /** Tempo da fala (s). */
+  /** true: fala com áudio (grifo e boca); false: timer de leitura (texto todo branco). */
+  voice: boolean;
+  /** Tempo no relógio da etapa (s). */
   t: number;
-  /** 0..1, só cresce dentro de uma fala (retomar volta ao início da palavra, o botão não). */
+  /** 0..1 do anel; só cresce dentro de um modo (retomar volta ao início da palavra, o anel não). */
   progress: number;
-  /** Quantas palavras já começaram (grifo progressivo). */
+  /** Palavras já acesas (no timer, todas). */
   spoken: number;
   /** Palavra sendo dita agora (currentTime entre start e end), ou −1. */
   active: number;
-  /** Há som de fala neste quadro (palavra ativa, tocando, não é emoji). */
+  /** Há som de fala neste quadro (voz tocando, palavra ativa, não é emoji). */
   speaking: boolean;
-  /** Volume 0..1 (AnalyserNode) ou null sem analisador (modo silencioso / sem WebAudio). */
+  /** Volume 0..1 (AnalyserNode) ou null sem analisador. */
   level: number | null;
 };
 
 export type VoicePlayerOptions = {
   onFrame: (f: VoiceFrame) => void;
-  /** A fala chegou ao fim (100%). */
-  onEnd: (id: string) => void;
+  /** O relógio da etapa chegou ao fim (fala ou timer). */
+  onEnd: (id: string, voice: boolean) => void;
 };
 
 /** Usuário já interagiu com a página: o áudio pode tocar nas etapas seguintes. */
@@ -76,8 +87,6 @@ export function installAudioUnlock(): void {
   document.addEventListener('keydown', unlock, true);
 }
 
-export const audioUnlocked = (): boolean => unlocked;
-
 export class VoicePlayer {
   private readonly els = new Map<string, HTMLAudioElement>();
   private readonly analysers = new Map<HTMLAudioElement, AnalyserNode>();
@@ -86,8 +95,8 @@ export class VoicePlayer {
   private id: string | null = null;
   private el: HTMLAudioElement | null = null;
   private mode: VoiceMode = 'idle';
-  private silent = false;
-  /** Relógio do modo silencioso: tempo acumulado + início do trecho corrente (ms). */
+  private voice = false;
+  /** Relógio do timer: tempo acumulado + início do trecho corrente (ms; 0 = parado). */
   private clock = { t: 0, since: 0 };
   private shown = 0;
   private pausedAt = 0;
@@ -108,8 +117,13 @@ export class VoicePlayer {
     return this.mode === 'paused';
   }
 
-  get isSilent(): boolean {
-    return this.silent;
+  /** Fala com áudio (true) ou timer de leitura (false). */
+  get isVoice(): boolean {
+    return this.voice;
+  }
+
+  get state(): VoiceMode {
+    return this.mode;
   }
 
   get element(): HTMLAudioElement | null {
@@ -121,91 +135,66 @@ export class VoicePlayer {
     return this.last;
   }
 
-  /** Pré-carrega o áudio de uma etapa (a próxima), para a fala começar sem atraso. */
+  /** Pré-carrega o áudio de uma etapa (a próxima), mesmo no modo sem voz. */
   preload(id: string): void {
     if (VOICES[id]) this.audioFor(id);
   }
 
-  /** Começa a fala da etapa do início. Sem permissão de autoplay, entra no modo silencioso. */
-  async play(id: string): Promise<void> {
+  /**
+   * Começa a etapa do zero: com `voice`, toca o áudio; sem, roda o timer de leitura.
+   * Se o `play()` for rejeitado, a etapa cai no timer sem quebrar o fluxo.
+   */
+  async start(id: string, voice: boolean): Promise<void> {
     this.stop();
     const clip = VOICES[id];
     if (!clip) return;
-    const token = ++this.token;
     this.id = id;
     this.clip = clip;
-    this.shown = 0;
-    this.mode = 'playing';
-    const el = this.audioFor(id);
-    this.el = el;
-    el.currentTime = 0;
-    this.silent = false;
-    this.startLoop();
-    try {
-      await el.play();
-      if (token !== this.token) {
-        el.pause();
-        return;
-      }
-      this.connectAnalyser(el);
-    } catch {
-      if (token !== this.token) return;
-      // Autoplay bloqueado: grifo, gradiente e boca seguem por um relógio interno.
-      this.silent = true;
-      this.clock = { t: 0, since: performance.now() };
-    }
+    this.el = this.audioFor(id);
+    await this.begin(voice);
   }
 
-  /** Pausa: o áudio para, o gradiente congela e a palavra que estava sendo dita fica grifada. */
+  /** Liga a voz na etapa atual (clique no alto-falante): áudio do início, anel do zero. */
+  async enableVoice(): Promise<void> {
+    if (!this.clip) return;
+    unlocked = true;
+    const c = ensureContext();
+    if (c && c.state === 'suspended') await c.resume().catch(() => undefined);
+    this.el?.pause();
+    await this.begin(true);
+  }
+
+  /** Pausa: o áudio para, o anel congela e a palavra que estava sendo dita fica acesa. */
   pause(): void {
     if (this.mode !== 'playing') return;
     this.pausedAt = this.time();
     this.mode = 'paused';
-    if (this.silent) this.clock = { t: this.pausedAt, since: 0 };
-    else this.el?.pause();
+    if (this.voice) this.el?.pause();
+    else this.clock = { t: this.pausedAt, since: 0 };
     this.emit();
   }
 
-  /** Retoma do INÍCIO da palavra em que parou (a frase não volta picotada). */
+  /** Retoma: com voz, do INÍCIO da palavra em que parou; no timer, de onde parou. */
   async resume(): Promise<void> {
     if (this.mode !== 'paused' || !this.clip) return;
-    const at = this.wordStartAt(this.pausedAt);
-    this.mode = 'playing';
     this.hiddenPause = false;
-    if (this.silent) {
-      this.clock = { t: at, since: performance.now() };
+    this.mode = 'playing';
+    if (!this.voice) {
+      this.clock = { t: this.pausedAt, since: performance.now() };
       return;
     }
-    if (this.el) {
-      this.el.currentTime = at;
-      try {
-        await this.el.play();
-      } catch {
-        this.goSilent(at);
-      }
-    }
-  }
-
-  /** Modo silencioso → som (clique do usuário no alto-falante), a partir da palavra atual. */
-  async enableSound(): Promise<void> {
-    if (!this.silent || !this.el || !this.clip) return;
-    unlocked = true;
-    const c = ensureContext();
-    if (c && c.state === 'suspended') await c.resume().catch(() => undefined);
-    const at = this.wordStartAt(this.time());
-    const wasPaused = this.mode === 'paused';
+    const at = this.wordStartAt(this.pausedAt);
+    if (!this.el) return;
     this.el.currentTime = at;
+    const token = this.token;
     try {
-      this.silent = false;
-      if (!wasPaused) await this.el.play();
-      else this.pausedAt = at;
-      this.connectAnalyser(this.el);
-    } catch {
-      this.goSilent(at);
+      await this.el.play();
+    } catch (err) {
+      if (token === this.token) this.fallBack(err);
     }
   }
 
-  /** Para a fala na hora e zera grifo, gradiente e boca (troca de etapa, Esc). */
+  /** Para tudo na hora e zera anel, grifo e boca (troca de etapa, Esc). */
   stop(): void {
     this.token++;
     if (this.el) {
@@ -221,7 +210,7 @@ export class VoicePlayer {
     this.clip = null;
     this.id = null;
     this.mode = 'idle';
-    this.silent = false;
+    this.voice = false;
     this.hiddenPause = false;
     this.shown = 0;
     this.stopLoop();
@@ -245,6 +234,43 @@ export class VoicePlayer {
   }
 
   // ---------- interno ----------
+
+  private async begin(voice: boolean): Promise<void> {
+    const token = ++this.token;
+    this.shown = 0;
+    this.mode = 'playing';
+    this.voice = voice;
+    this.clock = { t: 0, since: performance.now() };
+    this.startLoop();
+    if (!voice || !this.el) {
+      this.emit();
+      return;
+    }
+    const el = this.el;
+    el.currentTime = 0;
+    this.emit();
+    try {
+      await el.play();
+      if (token !== this.token) {
+        el.pause();
+        return;
+      }
+      this.connectAnalyser(el);
+    } catch (err) {
+      if (token === this.token) this.fallBack(err);
+    }
+  }
+
+  /** `play()` rejeitado: a etapa segue no modo sem voz, do começo do timer. */
+  private fallBack(err: unknown): void {
+    console.warn('[Nexo] a voz não pôde tocar; seguindo sem voz nesta etapa', err);
+    this.el?.pause();
+    this.voice = false;
+    this.shown = 0;
+    this.mode = 'playing';
+    this.clock = { t: 0, since: performance.now() };
+    this.emit();
+  }
 
   private audioFor(id: string): HTMLAudioElement {
     let el = this.els.get(id);
@@ -280,15 +306,15 @@ export class VoicePlayer {
     }
   }
 
-  private goSilent(at: number): void {
-    this.silent = true;
-    this.clock = { t: at, since: this.mode === 'playing' ? performance.now() : 0 };
-    if (this.mode === 'paused') this.pausedAt = at;
+  /** Duração do relógio corrente (fala ou timer). */
+  private span(): number {
+    if (!this.clip) return 1;
+    return this.voice ? this.clip.duration : silentDuration(this.clip);
   }
 
   private time(): number {
     if (this.mode === 'paused') return this.pausedAt;
-    if (this.silent) {
+    if (!this.voice) {
       return this.clock.since
         ? this.clock.t + (performance.now() - this.clock.since) / 1000
         : this.clock.t;
@@ -309,7 +335,7 @@ export class VoicePlayer {
 
   private level(): number | null {
     const an = this.el ? this.analysers.get(this.el) : undefined;
-    if (!an || this.silent) return null;
+    if (!an) return null;
     an.getFloatTimeDomainData(this.buf);
     let sum = 0;
     for (const v of this.buf) sum += v * v;
@@ -322,7 +348,7 @@ export class VoicePlayer {
       return {
         id: null,
         mode: 'idle',
-        silent: false,
+        voice: false,
         t: 0,
         progress: 0,
         spoken: 0,
@@ -331,9 +357,16 @@ export class VoicePlayer {
         level: null,
       };
     }
-    const t = Math.min(this.time(), clip.duration);
+    const span = this.span();
+    const t = Math.min(this.time(), span);
     const ended = this.mode === 'ended';
-    this.shown = ended ? 1 : Math.max(this.shown, Math.min(1, t / clip.duration));
+    this.shown = ended ? 1 : Math.max(this.shown, Math.min(1, t / span));
+    const base = { id: this.id, mode: this.mode, t, progress: this.shown };
+    if (!this.voice) {
+      // Sem voz: texto inteiro aceso desde o início, boca parada.
+      const all = clip.words.length;
+      return { ...base, voice: false, spoken: all, active: -1, speaking: false, level: null };
+    }
     let spoken = 0;
     let active = -1;
     clip.words.forEach((w, i) => {
@@ -349,11 +382,8 @@ export class VoicePlayer {
     const word = active >= 0 ? clip.words[active] : undefined;
     const speaking = playing && !!word && !isSymbolToken(word.text);
     return {
-      id: this.id,
-      mode: this.mode,
-      silent: this.silent,
-      t,
-      progress: this.shown,
+      ...base,
+      voice: true,
       spoken,
       active: playing ? active : -1,
       speaking,
@@ -371,15 +401,15 @@ export class VoicePlayer {
       this.emit();
       return;
     }
-    const done = this.silent
-      ? this.time() >= this.clip.duration
-      : !!this.el && (this.el.ended || this.el.currentTime >= this.clip.duration - 0.005);
+    const done = this.voice
+      ? !!this.el && (this.el.ended || this.el.currentTime >= this.clip.duration - 0.005)
+      : this.time() >= this.span();
     if (done) {
       this.mode = 'ended';
       this.emit();
       this.stopLoop();
       const id = this.id;
-      if (id) this.opts.onEnd(id);
+      if (id) this.opts.onEnd(id, this.voice);
       return;
     }
     this.emit();
@@ -398,6 +428,7 @@ export class VoicePlayer {
     gsap.ticker.remove(this.tick);
   }
 
+  /** Aba em segundo plano: pausa fala ou timer; ao voltar, retoma (voz: do início da palavra). */
   private handleVisibility = (): void => {
     if (document.hidden) {
       if (this.mode === 'playing') {

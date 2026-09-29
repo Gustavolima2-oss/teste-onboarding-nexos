@@ -1,5 +1,5 @@
 {
-  "note": "Voz: Preston (Magnific voiceId 870, eleven_v3, stability 1, similarity 0.15, speed 0.95, prefixo [robotic voice][monotone][flat]). Os links do Magnific expiram por volta de 04/10/2026: rode o build antes disso e versione os MP3 gerados.",
+  "note": "Voz: Tiago Lima (Magnific voiceId 450, eleven_v3, stability 0.6, similarity 0.75, speed 1.0, sem tags). Filtro em robotize.py: +3 semitons com timbre preservado e 5% de vocoder. Os links do Magnific expiram por volta de 04/10/2026: rode o build antes disso e versione os MP3 gerados.",
   "steps": [
     {
       "id": "step-01-ferramentas",

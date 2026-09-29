@@ -8,6 +8,9 @@ import json, os, sys, shutil, urllib.request, subprocess
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
 OUT_AUDIO = os.path.join(ROOT, "public", "audio", "nexo"); OUT_JSON = os.path.join(ROOT, "src", "voice", "voiceManifest.json")
 CLEAN = os.path.join(HERE, ".clean"); os.makedirs(OUT_AUDIO, exist_ok=True); os.makedirs(os.path.dirname(OUT_JSON), exist_ok=True); os.makedirs(CLEAN, exist_ok=True)
+out = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True).stdout
+if "rubberband" not in out:
+    sys.exit("ERRO: seu ffmpeg não tem o filtro rubberband. Rode: brew reinstall ffmpeg  (ou instale um ffmpeg com librubberband).")
 cfg = json.load(open(os.path.join(HERE, "voices.json"), encoding="utf-8"))
 manifest = {}
 for s in cfg["steps"]:

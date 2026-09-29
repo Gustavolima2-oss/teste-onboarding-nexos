@@ -221,6 +221,11 @@ async function start(): Promise<void> {
   let transition: gsap.core.Timeline | null = null;
   let current = initial;
   let closing = false;
+  /**
+   * Voz ligada nesta sessão. O tour começa SEM voz (texto branco + timer de leitura); o
+   * clique no alto-falante liga. Avançar com a voz pausada desliga para as seguintes.
+   */
+  let voiceOn = false;
   /** Avanço automático agendado (fim da fala + 400 ms). */
   let autoAdvance: gsap.core.Tween | null = null;
   const cancelAutoAdvance = () => {
@@ -233,15 +238,23 @@ async function start(): Promise<void> {
   const voice = new VoicePlayer({
     onFrame: (f) => {
       coach.setVoiceProgress(f.progress, f.spoken);
-      coach.setVoiceState(f.silent ? 'muted' : f.mode === 'paused' ? 'paused' : 'playing');
-      // Boca: fala só com palavra ativa; entre palavras, pausa e fim, sorriso no mesmo quadro.
-      nexo.speakLevel(f.speaking ? (f.level ?? 'auto') : null);
+      coach.setVoiceState(
+        f.voice && f.mode === 'playing'
+          ? 'playing'
+          : f.voice && f.mode === 'paused'
+            ? 'paused'
+            : 'off',
+      );
+      // Boca: só com voz e palavra ativa; entre palavras, na pausa, no fim e sem voz, sorriso
+      // no mesmo quadro.
+      nexo.speakLevel(f.voice && f.speaking ? (f.level ?? 'auto') : null);
     },
-    onEnd: (id) => {
+    onEnd: (id, spoken) => {
       const step = STEPS[current];
       if (busy || closing || !step || step.voice !== id) return;
       cancelAutoAdvance();
-      autoAdvance = gsap.delayedCall(AUTO_ADVANCE_DELAY_S, () => {
+      // Com voz: fim do áudio + 400 ms. Sem voz: o timer já é a espera.
+      autoAdvance = gsap.delayedCall(spoken ? AUTO_ADVANCE_DELAY_S : 0, () => {
         autoAdvance = null;
         if (busy || closing || STEPS[current]?.voice !== id) return;
         // Mesma transição do clique em "Próximo" (na última etapa, encerra o tour).
@@ -280,22 +293,28 @@ async function start(): Promise<void> {
     onClose: () => void finish(false),
     onVoiceToggle: () => {
       if (busy) return;
-      if (voice.isSilent) void voice.enableSound();
-      else if (voice.isPaused) void voice.resume();
-      else if (autoAdvance)
-        cancelAutoAdvance(); // já terminou: fica na etapa
-      else voice.pause();
+      if (voice.isVoice && voice.state === 'playing') voice.pause();
+      else if (voice.isVoice && voice.isPaused) void voice.resume();
+      else {
+        // Sem voz (ou fala já terminada): liga a voz e fala a etapa do início, anel do zero.
+        voiceOn = true;
+        cancelAutoAdvance();
+        coach.prepareText(true);
+        void voice.enableVoice();
+      }
     },
     onVideo: (playing) => {
       const layout = coach.layout;
       if (playing) {
-        voice.pause();
+        voice.pause(); // fala ou timer
         void nexo.gesture('idle');
         nexo.setExpression('listen');
         if (layout) nexo.lookAt(tooltipCenter(layout));
       } else {
         nexo.setExpression('smile');
         void nexo.gesture('think');
+        // Sem voz, o timer de leitura volta a correr quando o vídeo para.
+        if (!voice.isVoice && voice.isPaused) void voice.resume();
       }
     },
   });
@@ -310,10 +329,12 @@ async function start(): Promise<void> {
     nexo.lookAt(tooltipCenter(layout));
     debug.setStep(step.id);
     busy = false;
+    coach.prepareText(voiceOn);
     await coach.showTooltip();
     if (closing || STEPS[current] !== step) return;
     setState('ready', step.id);
-    void voice.play(step.voice);
+    // Timer de leitura (sem voz) ou fala: começa com o tooltip já na tela.
+    void voice.start(step.voice, voiceOn);
     const next = STEPS[STEPS.indexOf(step) + 1];
     if (next) voice.preload(next.voice);
     if (step.tooltip.kind === 'preview') coach.startDemo();
@@ -332,6 +353,8 @@ async function start(): Promise<void> {
     busy = true;
     current = to;
     setState('transition', step.id);
+    // Pausar vale como desligar: a etapa seguinte entra sem voz.
+    if (voice.isVoice && voice.isPaused) voiceOn = false;
     silence();
     coach.setBusy(true);
     const cross = cur.route !== step.route;

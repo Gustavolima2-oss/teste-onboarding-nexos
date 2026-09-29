@@ -35,7 +35,7 @@ O `npm test` abre o Chrome instalado via `playwright-core`. Ele cobre:
 - fim do tour, persistência, Tab preso no tooltip, `:focus-visible` e Esc em cada uma das 9 etapas;
 - movimento reduzido e fallback sem WebGL;
 - prévia animada e vídeo;
-- voz gravada: áudio e spans por etapa, avanço automático em duração + 400 ms, pausa e retomada no início da palavra, "Próximo" interrompendo a fala, modo silencioso (autoplay bloqueado) e boca sincronizada com a palavra ativa;
+- voz: começa sem voz (texto branco, timer de max(duração × 1,25; 3 s) avançando sozinho); o alto-falante liga a voz (áudio certo, grifo, anel reiniciado) e o avanço passa a ser em duração + 400 ms, com a etapa seguinte já falando; pausa e retomada no início da palavra; avançar pausado volta ao modo sem voz; "Próximo" interrompe a fala; `play()` rejeitado cai no modo sem voz; boca só com palavra ativa;
 - memória liberada no `destroy()`.
 
 ## Estrutura
@@ -59,7 +59,7 @@ src/
     NexoLook.ts           olhar seguindo o mouse
     narration.ts          Web Speech API (legado: só NexoGuide.talk)
   voice/
-    voice.ts              VoicePlayer: relógio da fala (currentTime), grifo, anel, pausa, modo silencioso, AnalyserNode
+    voice.ts              VoicePlayer: relógio da etapa em dois modos (timer de leitura / voz por currentTime), grifo, anel, pausa, AnalyserNode
     voiceManifest.json    texto, duração e tempo de cada palavra (gerado por nexo-voice/)
     flight.ts             trajetória em arco, banking e envelope do voo
     nexoMaterial.ts       material, máscaras e TODOS os valores de render (constantes nomeadas)
@@ -108,7 +108,7 @@ assets-src/               originais: nexo-3d.glb (fora do repositório) e o PNG 
 - **Um dono por eixo:** durante o voo, posição, escala, banking (Z) e yaw pertencem ao arco; durante o gesto, o olhar fica congelado e a flutuação desligada. A flutuação (±3 px em 3 s, sem rotação) e o olhar voltam quando o gesto termina. Nenhum movimento usa `back`/`elastic`.
 - **Entre telas:** a tela seguinte é montada numa sonda invisível para medir o destino antes da decolagem. A troca real (fade out 200 ms, montagem, fade in 250 ms) acontece por baixo do voo.
 - **Voltar:** a mesma troca, no sentido inverso (ver "Navegação nos dois sentidos").
-- **Fala:** começa quando o tooltip termina de entrar. 400 ms depois do fim do áudio, o fluxo avança com a mesma transição do clique (na última etapa, encerra). Toda troca (Próximo, Voltar, alvo, avanço automático, Esc) para o áudio e zera grifo, anel e boca antes de qualquer animação. O áudio da etapa seguinte é pré-carregado.
+- **Timer e fala:** começam quando o tooltip termina de entrar. Sem voz (padrão), o anel é um timer de leitura (duração × 1,25, mínimo 3 s) e o fluxo avança no fim; com voz, o anel segue o áudio e o fluxo avança 400 ms depois do fim. Toda troca (Próximo, Voltar, alvo, avanço automático, Esc) para o áudio e zera grifo, anel e boca antes de qualquer animação. O áudio da etapa seguinte é pré-carregado nos dois modos.
 - **Etapas especiais:** na 3, a demonstração do cursor começa depois do tooltip. Nas 6 e 7, o Play do vídeo pausa a fala e o Nexo passa a `listen`.
 - **Fim:** no "Próximo" da etapa 7, o tooltip sai, o Nexo faz `bye` e voa para fora (900 ms), o overlay some e o foco vai para a página. O Esc encerra a qualquer momento, pela mesma saída sem o gesto.
 
@@ -137,9 +137,9 @@ Os valores finais são constantes comentadas em [nexoMaterial.ts](../src/nexo/ne
   - `think`: inclina 8° de lado e olha para baixo.
 - **Rosto** ([NexoFace.ts](../src/nexo/NexoFace.ts)): um canvas de 1024×768 vira um `DecalGeometry` sobre a tela, detectada pelos texels escuros da textura, e cobre o rosto pintado. O visual segue o PNG de referência: bezel roxo com cantos bem arredondados, fundo marrom-escuro translúcido, scanlines finas, reflexo especular no topo e pixels laranja de cantos arredondados com glow. Os olhos são retângulos verticais e a boca é estreita. As células saem quadradas porque a altura em px é corrigida pelo aspecto da caixa do decal (`setBoxAspect`).
   - A fala são 5 barras em degraus que trocam a cada 70–120 ms, com pulsos nos olhos.
-  - Com a voz gravada, as barras seguem o volume (RMS do `AnalyserNode`, 5 degraus; 3 com movimento reduzido) e só aparecem com uma palavra ativa: entre palavras, na pausa e no fim, a boca volta ao sorriso no mesmo quadro. No modo silencioso, usa o padrão pseudoaleatório.
+  - Só com a voz ligada e uma palavra ativa, as barras seguem o volume (RMS do `AnalyserNode`, 5 degraus; 3 com movimento reduzido). Entre palavras, na pausa, no fim e em todo o modo sem voz, a boca fica no sorriso, trocando no mesmo quadro.
 - **Olhar** ([NexoLook.ts](../src/nexo/NexoLook.ts)): o yaw e o pitch são calculados **relativos à direção do tooltip**, limitados a ±28° e ±16°, com constante de tempo de 120 ms. Os olhos chegam antes do corpo. Com o mouse parado por 2 s, o olhar volta ao tooltip em ~600 ms.
-- **Voz:** MP3 gravados por etapa (ver o README, seção "Voz do Nexo"). O alto-falante pausa e retoma (Espaço também); no modo silencioso, liga o som a partir da palavra atual. Aba em segundo plano pausa e, ao voltar, retoma do início da palavra.
+- **Voz:** MP3 gravados por etapa (ver o README, seção "Voz do Nexo"). Desligada por padrão; o alto-falante liga, pausa e retoma (Espaço também). Aba em segundo plano pausa fala e timer; ao voltar, retoma (com voz, do início da palavra).
 
 ## Acessibilidade, movimento reduzido e performance
 

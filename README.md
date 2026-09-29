@@ -2,26 +2,26 @@
 
 **Demonstração ao vivo: https://gustavolima2-oss.github.io/teste-onboarding-nexos/**
 
-Protótipo do onboarding do produto. O mascote 3D **Nexo** guia o usuário por **9 dicas (coach marks) em 3 telas**: Home, Ferramentas e Seu negócio. Ele voa entre os pontos da interface, gesticula, **fala com voz gravada** (a boca segue o volume do áudio e cada palavra acende no tooltip no momento em que é dita) e acompanha o mouse com o olhar. Quando a fala termina, o tour avança sozinho.
+Protótipo do onboarding do produto. O mascote 3D **Nexo** guia o usuário por **9 dicas (coach marks) em 3 telas**: Home, Ferramentas e Seu negócio. Ele voa entre os pontos da interface, gesticula, pode **falar com voz gravada** (a boca segue o volume do áudio e cada palavra acende no tooltip no momento em que é dita) e acompanha o mouse com o olhar. O tour avança sozinho no fim de cada etapa.
 
 É uma demonstração: o tour **sempre começa do início** quando a página abre. Funciona melhor no Chrome ou no Edge de desktop, com a janela em 1440×900 ou maior.
 
 ## Como usar
 
-| Ação                      | Como                                                                                       |
-| ------------------------- | ------------------------------------------------------------------------------------------ |
-| Avançar                   | Botão **Próximo**, **→** ou **Enter**                                                      |
-| Voltar                    | Botão **Voltar**, ou **←** (a partir da etapa 2)                                           |
-| Avançar pelo item marcado | Nas etapas 1, 4 e 5 o item destacado é clicável: clicar nele avança, como no produto real  |
-| Sair do tour              | **Esc**                                                                                    |
-| Reiniciar do começo       | **R**                                                                                      |
-| Ir direto a uma etapa     | **1** a **9**                                                                              |
-| Pausar / retomar a fala   | Ícone de alto-falante no tooltip, ou **Espaço** (retoma do início da palavra em que parou) |
-| Vídeo (etapas 6 e 7)      | Botão **Play** no tooltip (pausa a fala)                                                   |
+| Ação                      | Como                                                                                            |
+| ------------------------- | ----------------------------------------------------------------------------------------------- |
+| Avançar                   | Botão **Próximo**, **→** ou **Enter**                                                           |
+| Voltar                    | Botão **Voltar**, ou **←** (a partir da etapa 2)                                                |
+| Avançar pelo item marcado | Nas etapas 1, 4 e 5 o item destacado é clicável: clicar nele avança, como no produto real       |
+| Sair do tour              | **Esc**                                                                                         |
+| Reiniciar do começo       | **R**                                                                                           |
+| Ir direto a uma etapa     | **1** a **9**                                                                                   |
+| Ouvir / pausar a voz      | Ícone no tooltip, ou **Espaço**: liga a voz, pausa e retoma (do início da palavra em que parou) |
+| Vídeo (etapas 6 e 7)      | Botão **Play** no tooltip (pausa a fala)                                                        |
 
 O **Tab** circula dentro do tooltip ("Voltar", áudio e "Próximo"). Com `prefers-reduced-motion`, o Nexo não voa: ele troca de lugar com um fade.
 
-**Voz e avanço automático.** A fala de cada etapa começa quando o tooltip termina de entrar. O anel em gradiente em volta do "Próximo" enche ao longo do áudio e, 400 ms depois do fim, o tour avança sozinho (na última etapa, encerra). Clicar em "Próximo" ou "Voltar" interrompe a fala na hora. Se o navegador bloquear o som antes do primeiro clique (política de autoplay), a etapa roda em **modo silencioso**: o texto e o anel andam no mesmo ritmo, e o alto-falante pulsa; clicar nele liga o som a partir da palavra atual. Com a aba em segundo plano, a fala pausa.
+**Sem voz (padrão) e com voz.** O tour começa **sem voz**: o texto aparece inteiro e o anel em gradiente em volta do "Próximo" funciona como um timer de leitura (duração da fala × 1,25, no mínimo 3 s); no fim, o tour avança sozinho. Clicar no alto-falante **liga a voz**: a etapa fala do início, as palavras acendem uma a uma e o anel passa a acompanhar o áudio; 400 ms depois do fim, o tour avança, e as etapas seguintes já começam falando. Com a voz tocando, o ícone vira pausa. Pausar e avançar leva a etapa seguinte de volta ao modo sem voz. "Próximo" e "Voltar" interrompem tudo na hora. Com a aba em segundo plano, a fala e o timer pausam.
 
 Também dá para abrir numa etapa pelo link: `…/teste-onboarding-nexos/?step=4`.
 
@@ -62,26 +62,28 @@ O pipeline ([scripts/optimize-glb.sh](scripts/optimize-glb.sh)) faz `weld` → d
 
 ## Voz do Nexo
 
-As falas são MP3 gravados, um por etapa, em `public/audio/nexo/`, com o tempo de cada palavra em [src/voice/voiceManifest.json](src/voice/voiceManifest.json). Os dois são gerados pelo pipeline em [nexo-voice/](nexo-voice/) e versionados.
+As falas (voz do Tiago Lima) são MP3 gravados, um por etapa, em `public/audio/nexo/`, com o tempo de cada palavra em [src/voice/voiceManifest.json](src/voice/voiceManifest.json). Os dois são gerados pelo pipeline em [nexo-voice/](nexo-voice/) e versionados.
 
 ```bash
-pip install numpy scipy faster-whisper   # e ffmpeg no PATH (brew install ffmpeg)
+brew install ffmpeg                      # precisa do filtro rubberband: ffmpeg -filters | grep rubberband
+pip install numpy scipy faster-whisper
 python3 nexo-voice/build_voices.py       # a partir da raiz do app
 ```
 
-- `robotize.py` aplica o filtro aprovado ("B, grave médio"; parâmetros intocados, duração preservada) e `align.py` marca cada palavra com o faster-whisper (modelo `small`), alinhando ao texto exibido.
-- O player ([src/voice/voice.ts](src/voice/voice.ts)) lê `audio.currentTime` a cada quadro e publica: palavras já ditas (grifo progressivo, branco sobre 30%), progresso do anel, palavra ativa e volume (`AnalyserNode`, RMS em 5 degraus; 3 com movimento reduzido). Sem palavra ativa, a boca volta ao sorriso no mesmo quadro.
+- `robotize.py` aplica o filtro aprovado (+3 semitons com o timbre preservado, via rubberband, e 5% de vocoder; parâmetros intocados, duração preservada). `align.py` marca cada palavra com o faster-whisper (modelo `small`), alinhando ao texto exibido.
+- O player ([src/voice/voice.ts](src/voice/voice.ts)) é o relógio de cada etapa, em dois modos: **timer** (sem voz, `SILENT_TIMER_FACTOR` = 1,25 e `SILENT_TIMER_MIN_MS` = 3000) e **voz** (lê `audio.currentTime` a cada quadro e publica palavras já ditas, progresso do anel, palavra ativa e volume do `AnalyserNode`, em 5 degraus; 3 com movimento reduzido). Sem palavra ativa, e durante todo o modo sem voz, a boca fica no sorriso, trocando no mesmo quadro.
+- Se o `play()` for rejeitado, a etapa segue no modo sem voz (aviso no console) e o fluxo continua.
 - Para trocar um texto: gere a voz no Magnific com a mesma configuração (`note` em `nexo-voice/voices.json`), atualize o item e rode o build de novo. O texto do tooltip vem do manifesto.
 
 **Decisões**
 
-- **Progresso:** o Figma não preenche o botão; ele desenha um anel em gradiente (`#E49876` → `#FFC846` 44% → `#FFD8C7`, da esquerda para a direita) colado à pílula do "Próximo". O anel começa no meio da lateral esquerda e cresce em sentido horário, de 0 a 100% ao longo do áudio. O Figma só mostra o estado "meio cheio".
+- **Progresso:** o Figma não preenche o botão; ele desenha um anel em gradiente (`#E49876` → `#FFC846` 44% → `#FFD8C7`, da esquerda para a direita) colado à pílula do "Próximo". O anel começa no meio da lateral esquerda e cresce em sentido horário, de 0 a 100% ao longo do timer ou do áudio. Ligar a voz reinicia o anel do zero.
 - **Bolinhas:** 9, acumulativas (o Figma ainda mostra 7, e nenhuma na última etapa).
-- **Pausa:** o Figma não tem ícone de pausa; foi desenhado um no mesmo estilo do SpeakerHigh (`public/images/onboarding/pause.svg`). Tocando, o ícone é o alto-falante (clicar pausa); pausado, é a pausa (clicar retoma); no modo silencioso, o alto-falante pulsa.
-- **Espaço** com o foco no tooltip pausa e retoma (antes, avançava).
+- **Ícone:** mostra a ação do clique. Alto-falante do Figma com a voz desligada ("Ouvir o Nexo") ou pausada ("Continuar ouvindo"); `Pause` do Phosphor, no mesmo tamanho e cor, enquanto a voz toca ("Pausar", `aria-pressed="true"`). Troca por crossfade de 120 ms.
+- **Espaço** com o foco no tooltip liga, pausa e retoma a voz.
 - **Etapa 1** não tem "Voltar" (fica invisível, ocupando o lugar); a **etapa 9** usa "Finalizar" (89×40), como no Figma.
 - **Emoji** solto (🧠, etapa 6) acende junto com a palavra anterior e não mexe a boca.
-- **WebAudio:** o áudio só passa pelo `AnalyserNode` depois de um gesto do usuário (um elemento ligado a um `AudioContext` suspenso fica mudo). Antes disso, a boca usa o padrão pseudoaleatório.
+- **Vídeo** (etapas 6 e 7): o Play pausa a fala ou o timer; sem voz, o timer volta a correr quando o vídeo para.
 - **Web Speech:** a narração sintetizada saiu do fluxo; `NexoGuide.talk()` continua na API por compatibilidade.
 
 ## API do `NexoGuide`

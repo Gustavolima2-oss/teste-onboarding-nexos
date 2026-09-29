@@ -604,56 +604,15 @@ const recorder = () => {
   await context.close();
 }
 
-// ---------- 8. Voz gravada: áudio, grifo, gradiente, pausa, avanço automático, boca ----------
+// ---------- 8. Voz: sem voz por padrão (timer), voz pelo alto-falante, pausa, boca ----------
 {
   const manifest = JSON.parse(
     readFileSync(new URL('../src/voice/voiceManifest.json', import.meta.url)),
   );
   const VOICE_IDS = Object.keys(manifest);
-  const { page, context, errors } = await newPage();
-  // Gravador por quadro, DEPOIS do tick da voz (mesmo quadro): boca x palavra ativa.
-  const hookMouth = () =>
-    page.evaluate(() => {
-      window.__mouth = { frames: 0, bad: 0, talk: 0 };
-      window.__nexo.gsap.ticker.add(() => {
-        const f = window.__nexo.voice.lastFrame;
-        const face = window.__nexo.nexo.debugStage?.face;
-        if (!f || !face) return;
-        window.__mouth.frames++;
-        const talking = face.current === 'talk';
-        if (talking) window.__mouth.talk++;
-        if (talking !== f.speaking) window.__mouth.bad++;
-      });
-    });
-  await page.goto(`${base}?onboarding=reset#/home`);
-  await ready(page, IDS[0]);
-  await hookMouth();
-  const stepInfo = () =>
-    page.evaluate(() => ({
-      src: window.__nexo.voice.element?.src ?? '',
-      spans: document.querySelectorAll('.coach-say-word').length,
-      id: window.__nexo.voice.currentId,
-    }));
-  // (a) as 9 etapas: áudio certo e um span por palavra do manifesto. (b) avanço automático.
-  const autos = [];
-  for (let i = 0; i < IDS.length; i++) {
-    await ready(page, IDS[i]);
-    const t0 = await page.evaluate(() => performance.now());
-    await page
-      .waitForFunction(() => !window.__nexo.voice.element?.paused, null, { timeout: 5000 })
-      .catch(() => {});
-    const info = await stepInfo();
-    const vid = VOICE_IDS[i];
-    check(
-      `voz etapa ${i + 1}: áudio ${vid}.mp3 e ${manifest[vid].words.length} spans`,
-      info.id === vid &&
-        info.src.endsWith(`audio/nexo/${vid}.mp3`) &&
-        info.spans === manifest[vid].words.length,
-      JSON.stringify(info),
-    );
-    if (i === IDS.length - 1) break;
-    // Espera o avanço automático (sem tocar em nada): transição da etapa seguinte.
-    const t1 = await page.evaluate(
+  const timerMs = (vid) => Math.max(manifest[vid].duration * 1.25, 3) * 1000;
+  const nextStepAt = (p, next) =>
+    p.evaluate(
       (next) =>
         new Promise((res) => {
           const tick = () => {
@@ -662,80 +621,201 @@ const recorder = () => {
           };
           tick();
         }),
-      IDS[i + 1],
+      next,
     );
-    autos.push({
-      step: i + 1,
-      ms: Math.round(t1 - t0),
-      expected: Math.round(manifest[vid].duration * 1000 + 400),
+  const snap = (p) =>
+    p.evaluate(() => {
+      const v = window.__nexo.voice;
+      return {
+        voice: v.isVoice,
+        state: v.state,
+        id: v.currentId,
+        src: v.element?.src ?? '',
+        audioPaused: v.element ? v.element.paused : true,
+        spans: document.querySelectorAll('.coach-say-word').length,
+        spoken: document.querySelectorAll('.coach-say-word.is-spoken').length,
+        progress: Number(
+          getComputedStyle(document.querySelector('.coach-next')).getPropertyValue(
+            '--coach-progress',
+          ) || 0,
+        ),
+        icon: document.querySelector('.coach-audio').dataset.voice,
+        pressed: document.querySelector('.coach-audio').getAttribute('aria-pressed'),
+        label: document.querySelector('.coach-audio').getAttribute('aria-label'),
+        face: window.__nexo.nexo.debugStage?.face.current,
+        t: v.lastFrame?.t ?? 0,
+      };
     });
-  }
-  const autoOk = autos.every((a) => Math.abs(a.ms - a.expected) < 300);
+  // Boca x palavra ativa, conferida DEPOIS do tick da voz, no mesmo quadro.
+  const hookMouth = (p) =>
+    p.evaluate(() => {
+      window.__mouth = { frames: 0, bad: 0, talk: 0, silentTalk: 0 };
+      window.__nexo.gsap.ticker.add(() => {
+        const f = window.__nexo.voice.lastFrame;
+        const face = window.__nexo.nexo.debugStage?.face;
+        if (!f || !face) return;
+        window.__mouth.frames++;
+        const talking = face.current === 'talk';
+        if (talking) window.__mouth.talk++;
+        if (talking && !f.voice) window.__mouth.silentTalk++;
+        if (talking !== (f.voice && f.speaking)) window.__mouth.bad++;
+      });
+    });
+
+  const { page, context, errors } = await newPage();
+  await page.goto(`${base}?onboarding=reset#/home`);
+  await ready(page, IDS[0]);
+  await hookMouth(page);
+  // (1) começa sem voz: texto todo branco, nenhum áudio, anel avançando.
+  await page.waitForTimeout(900);
+  const s0 = await snap(page);
   check(
-    'avanço automático em duração + ~400 ms (tolerância 300 ms) nas 8 trocas',
-    autoOk,
-    autos.map((a) => `${a.step}:${a.ms}/${a.expected}`).join(' '),
-  );
-  const mouth = await page.evaluate(() => window.__mouth);
-  check(
-    'boca: fala só com palavra ativa, sorriso no mesmo quadro em que ela termina',
-    mouth.bad === 0 && mouth.talk > 0 && mouth.frames > 100,
-    JSON.stringify(mouth),
+    'sem voz por padrão: texto todo branco, nenhum áudio tocando, anel avançando, ícone "Ouvir o Nexo"',
+    !s0.voice &&
+      s0.audioPaused &&
+      s0.spoken === s0.spans &&
+      s0.spans === manifest[VOICE_IDS[0]].words.length &&
+      s0.progress > 0.15 &&
+      s0.icon === 'off' &&
+      s0.pressed === 'false' &&
+      s0.label === 'Ouvir o Nexo',
+    JSON.stringify(s0),
   );
   await context.close();
 
-  // (c) pausa e retomada; (d) Próximo no meio da fala.
+  // (2) sem voz, avanço automático em max(duração × 1,25; 3 s), medido do instante em
+  // que cada etapa fica "ready" (quando o timer começa).
   {
     const { page: p, context: c } = await newPage();
-    await p.goto(`${base}?onboarding=reset&step=3`);
-    await ready(p, IDS[2]);
-    await p.waitForFunction(() => window.__nexo.voice.lastFrame?.t > 1.5, null, { timeout: 8000 });
-    await p.keyboard.press(' '); // foco no "Próximo", dentro do tooltip
-    const snap = () =>
-      p.evaluate(() => ({
-        progress: getComputedStyle(document.querySelector('.coach-next')).getPropertyValue(
-          '--coach-progress',
-        ),
-        spoken: document.querySelectorAll('.coach-say-word.is-spoken').length,
-        paused: window.__nexo.voice.element.paused,
-        state: document.querySelector('.coach-audio').dataset.voice,
-        pressed: document.querySelector('.coach-audio').getAttribute('aria-pressed'),
-        face: window.__nexo.nexo.debugStage.face.current,
-        t: window.__nexo.voice.lastFrame.t,
-      }));
-    const a = await snap();
-    await p.waitForTimeout(700);
-    const b = await snap();
+    await p.addInitScript(() => {
+      window.__readyLog = [];
+      const obs = () => {
+        const d = document.documentElement.dataset;
+        if (d.coachState === 'ready')
+          window.__readyLog.push({ id: d.coachStep, t: performance.now() });
+      };
+      document.addEventListener('DOMContentLoaded', () =>
+        new MutationObserver(obs).observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ['data-coach-state'],
+        }),
+      );
+    });
+    await p.goto(`${base}?onboarding=reset#/home`);
+    const autos = [];
+    for (let i = 0; i < 3; i++) {
+      await ready(p, IDS[i]);
+      const t1 = await nextStepAt(p, IDS[i + 1]);
+      const t0 = await p.evaluate(
+        (id) => window.__readyLog.filter((r) => r.id === id).pop()?.t,
+        IDS[i],
+      );
+      autos.push({
+        step: i + 1,
+        ms: Math.round(t1 - t0),
+        expected: Math.round(timerMs(VOICE_IDS[i])),
+      });
+    }
     check(
-      'pausa: áudio parado, gradiente e grifo congelados, boca no padrão, ícone em pausa',
-      a.paused &&
-        b.paused &&
+      'sem voz: avanço automático em max(duração × 1,25; 3 s) (tolerância 250 ms)',
+      autos.every((a) => Math.abs(a.ms - a.expected) < 250),
+      autos.map((a) => `${a.step}:${a.ms}/${a.expected}`).join(' '),
+    );
+    await c.close();
+  }
+
+  // (3) alto-falante liga a voz; (4) avanço com voz e a seguinte já falando; (9) boca.
+  {
+    const { page: p, context: c, errors: e } = await newPage();
+    await p.addInitScript(() => {
+      window.__readyLog = [];
+      document.addEventListener('DOMContentLoaded', () =>
+        new MutationObserver(() => {
+          const d = document.documentElement.dataset;
+          if (d.coachState === 'ready')
+            window.__readyLog.push({ id: d.coachStep, t: performance.now() });
+        }).observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ['data-coach-state'],
+        }),
+      );
+    });
+    await p.goto(`${base}?onboarding=reset&step=2`);
+    await ready(p, IDS[1]);
+    await hookMouth(p);
+    await p.waitForTimeout(1200);
+    const before = await snap(p);
+    await p.click('.coach-audio');
+    const tOn = await p.evaluate(() => performance.now());
+    await p.waitForFunction(() => !window.__nexo.voice.element?.paused, null, { timeout: 5000 });
+    await p.waitForTimeout(250);
+    const on = await snap(p);
+    const vid = VOICE_IDS[1];
+    check(
+      'alto-falante liga a voz: áudio certo tocando, texto cinza acendendo, spans = manifesto, anel reiniciado, ícone de pausa',
+      on.voice &&
+        !on.audioPaused &&
+        on.src.endsWith(`audio/nexo/${vid}.mp3`) &&
+        on.spans === manifest[vid].words.length &&
+        on.spoken < on.spans &&
+        on.progress < before.progress &&
+        on.icon === 'playing' &&
+        on.pressed === 'true' &&
+        on.label === 'Pausar',
+      JSON.stringify({ before: before.progress, on }),
+    );
+    const t1 = await nextStepAt(p, IDS[2]);
+    const exp = manifest[vid].duration * 1000 + 400;
+    check(
+      'com voz: avanço automático em duração + ~400 ms (tolerância 300 ms)',
+      Math.abs(t1 - tOn - exp) < 300,
+      `${Math.round(t1 - tOn)}/${Math.round(exp)}`,
+    );
+    await ready(p, IDS[2]);
+    await p.waitForFunction(() => !window.__nexo.voice.element?.paused, null, { timeout: 5000 });
+    const next = await snap(p);
+    check(
+      'com voz: a etapa seguinte já começa falando',
+      next.voice &&
+        !next.audioPaused &&
+        next.src.endsWith(`${VOICE_IDS[2]}.mp3`) &&
+        next.icon === 'playing',
+      JSON.stringify(next),
+    );
+    // (5) pausa e retomada.
+    await p.waitForFunction(() => window.__nexo.voice.lastFrame?.t > 1.2, null, { timeout: 8000 });
+    await p.keyboard.press(' '); // foco no "Próximo", dentro do tooltip
+    const a = await snap(p);
+    await p.waitForTimeout(700);
+    const b = await snap(p);
+    check(
+      'pausa: áudio parado, anel e grifo congelados, boca no padrão, ícone "Continuar ouvindo"',
+      a.audioPaused &&
+        b.audioPaused &&
         a.progress === b.progress &&
         a.spoken === b.spoken &&
-        b.state === 'paused' &&
-        b.pressed === 'true' &&
+        b.spoken > 0 &&
+        b.icon === 'paused' &&
+        b.pressed === 'false' &&
+        b.label === 'Continuar ouvindo' &&
         b.face !== 'talk',
       JSON.stringify({ a, b }),
     );
-    const expectStart = manifest[VOICE_IDS[2]].words
-      .filter((w) => w.start <= a.t + 1e-3)
-      .pop().start;
+    const words = manifest[VOICE_IDS[2]].words;
+    const expectStart = words.filter((w) => w.start <= a.t + 1e-3).pop().start;
     await p.keyboard.press(' ');
-    const r = await p.evaluate(() => ({ t: window.__nexo.voice.element.currentTime }));
+    const r = await p.evaluate(() => window.__nexo.voice.element.currentTime);
     check(
-      'retomar volta ao início da palavra ativa',
-      Math.abs(r.t - expectStart) < 0.12,
-      `currentTime ${r.t.toFixed(3)} / start ${expectStart}`,
+      'retomar volta ao início da palavra em que parou',
+      Math.abs(r - expectStart) < 0.12,
+      `currentTime ${r.toFixed(3)} / start ${expectStart}`,
     );
+    // (7) Próximo no meio da fala.
     await p.waitForTimeout(400);
     const el = await p.evaluateHandle(() => window.__nexo.voice.element);
     await p.click('.coach-next');
     const mid = await p.evaluate(
-      (el) => ({
-        paused: el.paused,
-        t: el.currentTime,
-        step: document.documentElement.dataset.coachStep,
-      }),
+      (el) => ({ paused: el.paused, step: document.documentElement.dataset.coachStep }),
       el,
     );
     check(
@@ -743,36 +823,61 @@ const recorder = () => {
       mid.paused && mid.step === IDS[3],
       JSON.stringify(mid),
     );
+    // A voz segue ligada: a etapa 4 fala. (6) Pausar e avançar leva a seguinte ao modo sem voz.
+    await ready(p, IDS[3]);
+    await p.waitForFunction(() => !window.__nexo.voice.element?.paused, null, { timeout: 5000 });
+    await p.click('.coach-audio'); // pausa
+    await p.click('.coach-next');
+    await ready(p, IDS[4]);
+    await p.waitForTimeout(300);
+    const off = await snap(p);
+    check(
+      'avançar com a voz pausada: a etapa seguinte entra sem voz (texto branco, timer, alto-falante)',
+      !off.voice &&
+        off.audioPaused &&
+        off.spoken === off.spans &&
+        off.icon === 'off' &&
+        off.progress > 0,
+      JSON.stringify(off),
+    );
+    await p.waitForTimeout(800);
+    const mouth = await p.evaluate(() => window.__mouth);
+    check(
+      'boca: fala só com palavra ativa (mesmo quadro) e fica no padrão durante todo o modo sem voz',
+      mouth.bad === 0 && mouth.silentTalk === 0 && mouth.talk > 0 && mouth.frames > 200,
+      JSON.stringify(mouth),
+    );
+    check('voz ligada/pausa: sem erros', e.length === 0, e.join(' | '));
     await c.close();
   }
 
-  // (e) autoplay bloqueado: modo silencioso (grifo e gradiente pelo relógio interno).
+  // (8) play() rejeitado: cai no modo sem voz sem quebrar o fluxo.
   {
-    const { page: p, context: c, errors: e } = await newPage();
+    // O aviso do fallback é esperado; qualquer outro aviso ou erro conta como falha.
+    const { page: p, context: c, errors: e } = await newPage({ allowWarning: /\[Nexo\] a voz/ });
+    const warns = [];
+    p.on('console', (m) => m.type() === 'warning' && warns.push(m.text()));
     await p.addInitScript(() => {
       HTMLMediaElement.prototype.play = function () {
         return Promise.reject(new DOMException('bloqueado', 'NotAllowedError'));
       };
     });
-    await p.goto(`${base}?onboarding=reset&step=3`);
-    await ready(p, IDS[2]);
-    await p.waitForTimeout(1500);
-    const s = await p.evaluate(() => ({
-      state: document.querySelector('.coach-audio').dataset.voice,
-      silent: window.__nexo.voice.isSilent,
-      spoken: document.querySelectorAll('.coach-say-word.is-spoken').length,
-      progress: Number(
-        getComputedStyle(document.querySelector('.coach-next')).getPropertyValue(
-          '--coach-progress',
-        ),
-      ),
-    }));
+    await p.goto(`${base}?onboarding=reset`);
+    await ready(p, IDS[0]);
+    await p.click('.coach-audio');
+    await p.waitForTimeout(500);
+    const s1 = await snap(p);
+    const t1 = await nextStepAt(p, IDS[1]).then(() => true);
     check(
-      'autoplay bloqueado: modo silencioso, ícone "sem som", grifo e gradiente avançam',
-      s.silent && s.state === 'muted' && s.spoken > 1 && s.progress > 0.1,
-      JSON.stringify(s),
+      'play() rejeitado: volta ao modo sem voz (texto branco, timer) e o fluxo avança',
+      !s1.voice && s1.spoken === s1.spans && s1.icon === 'off' && s1.progress > 0 && t1,
+      JSON.stringify(s1),
     );
-    check('modo silencioso: sem erros', e.length === 0, e.join(' | '));
+    check(
+      'play() rejeitado: registrado no console, sem erros',
+      warns.some((w) => w.includes('[Nexo]')) && e.length === 0,
+      `${warns.length} aviso(s); ${e.join(' | ')}`,
+    );
     await c.close();
   }
   check('voz: sem erros', errors.length === 0, errors.join(' | '));

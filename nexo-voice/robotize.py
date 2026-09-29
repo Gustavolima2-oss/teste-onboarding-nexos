@@ -1,60 +1,61 @@
-"""Aplica o filtro de voz aprovado do Nexo ("B - grave médio").
+"""Aplica o filtro de voz aprovado do Nexo (voz Tiago Lima, "pitch +3 com toque de robô").
 Uso: python3 robotize.py entrada.mp3 saida.mp3
-Requer: ffmpeg no PATH, numpy, scipy.
+Requer: ffmpeg COM o filtro rubberband (o ffmpeg do Homebrew já vem com ele;
+confira com `ffmpeg -filters | grep rubberband`), numpy e scipy.
 NÃO altere os parâmetros: são exatamente os aprovados pelo design.
-A duração de saída é igual à de entrada (a queda de tom preserva o tempo),
-então as marcações de palavra calculadas no áudio limpo valem para o processado.
+A duração de saída é igual à de entrada, então as marcações de palavra
+calculadas no áudio limpo valem para o processado.
 """
 import sys, subprocess, tempfile, os
 import numpy as np, scipy.io.wavfile as w, scipy.signal as sg
 
-SEMITONES = 3      # tom mais grave
-BASS_DB = 4.5      # reforço de graves abaixo de 220 Hz
-RING_HZ, RING_MIX = 55, 0.30
-DETUNE_CENTS, DETUNE_MIX = [-14, 14], 0.42
-BAND = (200, 4000)
-DRIVE = 2.4
-COMBS = [(2.1, 0.30), (11, 0.18)]
+SEMITONES = 3          # tom mais alto, com o timbre (formantes) preservado
+ROBOT_MIX = 0.05       # 5% de vocoder: toque eletrônico bem leve
+HIGHPASS_HZ = 80
 PEAK = 0.89
 
-def load(path):
-    tmp = tempfile.mktemp(suffix=".wav")
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", path, "-ar", "44100", "-ac", "1", tmp], check=True)
-    sr, x = w.read(tmp); os.remove(tmp)
-    return sr, x.astype(np.float32) / 32768.0
+def run(args): subprocess.run(args, check=True)
 
-def pitch_down(y, semitones):
-    r = 2 ** (-semitones / 12); n = len(y)
-    slow = np.interp(np.arange(0, n, r), np.arange(n), y)
-    win = 1024; hop = win // 4; ratio = len(slow) / n
-    out = np.zeros(n + win); wnd = np.hanning(win); po = 0; pi = 0.0
-    while po + win < len(out) and int(pi) + win < len(slow):
-        out[po:po + win] += slow[int(pi):int(pi) + win] * wnd
-        po += hop; pi += hop * ratio
-    return out[:n]
+def pitch_shift(src, dst):
+    r = 2 ** (SEMITONES / 12)
+    run(["ffmpeg", "-v", "error", "-y", "-i", src, "-af",
+         f"rubberband=pitch={r}:formant=preserved:transients=smooth:detector=soft:pitchq=quality",
+         "-ar", "44100", "-ac", "1", dst])
 
-def process(sr, x):
-    t = lambda y: np.arange(len(y)) / sr
-    y = pitch_down(x, SEMITONES)
-    y = (1 - RING_MIX) * y + RING_MIX * (y * np.sin(2 * np.pi * RING_HZ * t(y)))
-    n = len(y); out = y * (1 - DETUNE_MIX)
-    for c in DETUNE_CENTS:
-        idx = np.clip(np.arange(n) * 2 ** (c / 1200), 0, n - 1)
-        out += (DETUNE_MIX / len(DETUNE_CENTS)) * np.interp(idx, np.arange(n), y)
-    y = out
-    b, a = sg.butter(4, [BAND[0] / (sr / 2), BAND[1] / (sr / 2)], btype="band"); y = sg.lfilter(b, a, y)
-    b, a = sg.butter(2, 220 / (sr / 2), btype="low"); y = y + sg.lfilter(b, a, y) * (10 ** (BASS_DB / 20) - 1)
-    y = np.tanh(y * DRIVE) / np.tanh(DRIVE)
-    for ms, g in COMBS:
-        d = int(sr * ms / 1000); o = y.copy(); o[d:] += g * y[:-d]; y = o
-    m = np.max(np.abs(y)); y = y * (PEAK / m) if m > 0 else y
-    return y
+def blsaw(n, sr, f0):
+    t = np.arange(n) / sr; y = np.zeros(n); k = 1
+    while k * f0 < sr * 0.45:
+        y += np.sin(2 * np.pi * k * f0 * t) / k * (1 / (1 + (k * f0 / 3500) ** 2)); k += 1
+    return y / np.abs(y).max()
 
-def save(sr, y, path):
-    tmp = tempfile.mktemp(suffix=".wav")
-    w.write(tmp, sr, (np.clip(y, -1, 1) * 32767).astype(np.int16))
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", tmp, "-codec:a", "libmp3lame", "-b:a", "128k", path], check=True)
-    os.remove(tmp)
+def vocoder(x, sr, f0, nfft=1024, hop=256, lifter=44, noise=0.03):
+    n = len(x); c = blsaw(n, sr, f0) + noise * np.random.default_rng(1).standard_normal(n)
+    _, _, M = sg.stft(x, sr, nperseg=nfft, noverlap=nfft - hop)
+    _, _, C = sg.stft(c, sr, nperseg=nfft, noverlap=nfft - hop)
+    def env(S):
+        mag = np.log(np.abs(S) + 1e-7); cep = np.fft.irfft(mag, axis=0); cep[lifter:-lifter] = 0
+        return np.exp(np.fft.rfft(cep, axis=0).real)
+    _, y = sg.istft(C / (env(C) + 1e-7) * env(M), sr, nperseg=nfft, noverlap=nfft - hop)
+    return y[:n]
+
+def f0est(x, sr):
+    fr = []; hop = int(sr * 0.02); win = int(sr * 0.04)
+    for i in range(0, len(x) - win, hop):
+        s = x[i:i + win]
+        if np.sqrt((s ** 2).mean()) < 0.02: continue
+        ac = np.correlate(s, s, "full")[win - 1:]; lo, hi = int(sr / 400), int(sr / 80)
+        fr.append(sr / (lo + np.argmax(ac[lo:hi])))
+    return float(np.median(fr)) if fr else 150.0
+
+def process(src, dst):
+    tmp = tempfile.mktemp(suffix=".wav"); pitch_shift(src, tmp)
+    sr, x = w.read(tmp); os.remove(tmp); x = x.astype(np.float32) / 32768
+    nrm = lambda v: v / np.abs(v).max()
+    y = ROBOT_MIX * nrm(vocoder(x, sr, f0est(x, sr))) + (1 - ROBOT_MIX) * nrm(x)
+    b, a = sg.butter(2, HIGHPASS_HZ / (sr / 2), btype="high"); y = sg.lfilter(b, a, y)
+    y = y * PEAK / np.abs(y).max()
+    out = tempfile.mktemp(suffix=".wav"); w.write(out, sr, (np.clip(y, -1, 1) * 32767).astype(np.int16))
+    run(["ffmpeg", "-v", "error", "-y", "-i", out, "-codec:a", "libmp3lame", "-b:a", "160k", dst]); os.remove(out)
 
 if __name__ == "__main__":
-    sr, x = load(sys.argv[1]); save(sr, process(sr, x), sys.argv[2])
+    process(sys.argv[1], sys.argv[2])
