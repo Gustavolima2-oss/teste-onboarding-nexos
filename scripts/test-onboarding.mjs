@@ -372,7 +372,7 @@ const recorder = () => {
   await context.close();
 }
 
-// ---------- 5. Prévia (etapa 3) e vídeo (etapa 6) ----------
+// ---------- 5. Prévia (etapa 3) ----------
 {
   const { page, context, errors } = await newPage();
   await page.goto(`${base}?onboarding=reset&step=3#/ferramentas`);
@@ -384,25 +384,7 @@ const recorder = () => {
   }));
   check('prévia: o cursor clica e o ícone fica fixado', demo.pinned, JSON.stringify(demo));
 
-  await page.goto(`${base}?onboarding=reset&step=6#/seu-negocio`);
-  await ready(page, 'base');
-  await page.click('.coach-play');
-  await page.waitForTimeout(600);
-  const v = await page.evaluate(() => {
-    const video = document.querySelector('.coach-video');
-    return {
-      video: !!video,
-      playing: video ? !video.paused : false,
-      expr: window.__nexo.nexo.currentExpression,
-    };
-  });
-  check(
-    'vídeo: toca ao clicar em Play e o Nexo fica em "listen"',
-    v.video && v.playing && v.expr === 'listen',
-    JSON.stringify(v),
-  );
-
-  check('prévia/vídeo: sem erros', errors.length === 0, errors.join(' | '));
+  check('prévia: sem erros', errors.length === 0, errors.join(' | '));
   await context.close();
 }
 
@@ -1196,78 +1178,166 @@ const recorder = () => {
   }
 }
 
-// ---------- 12. Etapas 6 e 7: thumb em vídeo sob o "Play" ----------
+// ---------- 12. Etapas 6, 7 e 8: tooltip só de texto, sem sobreposição ----------
 {
-  const thumb = (p) =>
-    p.evaluate(() => {
-      const v = document.querySelector('.coach-media video.coach-loop');
-      const play = document.querySelector('.coach-play');
-      const r = play?.getBoundingClientRect();
-      const top = r ? document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) : null;
-      return {
-        loop: !!v,
-        playing: !!v && !v.paused && v.currentTime > 0.2,
-        muted: v?.muted,
-        fit: v ? getComputedStyle(v).objectFit : null,
-        sources: v ? [...v.querySelectorAll('source')].map((s) => s.src.split('/').pop()) : [],
-        playOnTop: !!top && !!play?.contains(top),
-      };
-    });
-  for (const [n, name] of [
-    [6, 'base-conhecimento'],
-    [7, 'produtos-servicos'],
+  const inter = (a, b, pad = 0) =>
+    a.x < b.x + b.w + pad &&
+    b.x < a.x + a.w + pad &&
+    a.y < b.y + b.h + pad &&
+    b.y < a.y + a.h + pad;
+  for (const [W, H] of [
+    [1440, 900],
+    [1920, 1080],
   ]) {
-    const { page, context, errors } = await newPage();
-    await page.goto(`${base}?onboarding=reset&step=${n}`);
-    await ready(page, IDS[n - 1]);
-    await page
-      .waitForFunction(
-        () => {
-          const v = document.querySelector('video.coach-loop');
-          return v && !v.paused && v.currentTime > 0.2;
-        },
-        null,
-        { timeout: 8000 },
-      )
-      .catch(() => {});
-    const t = await thumb(page);
-    check(
-      `etapa ${n}: thumb em vídeo (${name}, WebM antes do MP4) tocando mudo, "Play" por cima`,
-      t.playing &&
-        t.muted &&
-        t.fit === 'cover' &&
-        t.sources.join(',') === `${name}.webm,${name}.mp4` &&
-        t.playOnTop,
-      JSON.stringify(t),
-    );
-    if (n === 6) {
-      await page.click('.coach-play');
-      await page.waitForTimeout(600);
-      const played = await page.evaluate(() => ({
-        full:
-          !!document.querySelector('video.coach-video') &&
-          !document.querySelector('video.coach-video').paused,
-        loopPaused: document.querySelector('video.coach-loop')?.paused,
-      }));
+    const context = await browser.newContext({
+      viewport: { width: W, height: H },
+      deviceScaleFactor: 1,
+    });
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    // Referência: tooltip de texto da etapa 5 (largura, padding, tipografia, rodapé).
+    await page.goto(`${base}?onboarding=reset&step=5#/ferramentas`);
+    await ready(page, 'seu-negocio');
+    const look = () =>
+      page.evaluate(() => {
+        const tip = document.querySelector('.coach-tooltip');
+        const cs = getComputedStyle(tip);
+        const say = getComputedStyle(document.querySelector('.coach-say'));
+        return {
+          kind: tip.dataset.kind,
+          w: tip.offsetWidth,
+          padding: cs.padding,
+          font: `${say.fontFamily} ${say.fontSize} ${say.fontWeight} ${say.lineHeight}`,
+          footer: [...document.querySelectorAll('.coach-footer > *')]
+            .map((e) => e.className.split(' ')[0])
+            .join(','),
+          footerH: document.querySelector('.coach-footer').offsetHeight,
+        };
+      });
+    const ref = await look();
+    for (const n of [6, 7, 8]) {
+      await page.goto(`${base}?onboarding=reset&step=${n}#/seu-negocio`);
+      await ready(page, IDS[n - 1]);
+      await page.waitForTimeout(400);
+      const r = await page.evaluate(() => {
+        const l = window.__nexo.coach.layout;
+        const media = document.querySelector('.coach-media');
+        return {
+          layout: l,
+          media: { hidden: media.hidden, children: media.childElementCount },
+          videos: document.querySelectorAll('video').length,
+          play: !!document.querySelector('.coach-play, .coach-close, .coach-poster'),
+          vw: innerWidth,
+          vh: innerHeight,
+        };
+      });
+      const t = await look();
+      const l = r.layout;
+      const inside = (b) => b.x >= 0 && b.y >= 0 && b.x + b.w <= r.vw && b.y + b.h <= r.vh;
       check(
-        'etapa 6: "Play" continua abrindo o vídeo completo e pausa o thumb',
-        played.full && played.loopPaused === true,
-        JSON.stringify(played),
+        `${W}×${H} etapa ${n}: tooltip só de texto (sem vídeo, capa, Play nem ×), igual ao das outras etapas`,
+        t.kind === 'text' &&
+          r.media.hidden &&
+          r.media.children === 0 &&
+          r.videos === 0 &&
+          !r.play &&
+          JSON.stringify({ ...t, kind: 0 }) === JSON.stringify({ ...ref, kind: 0 }),
+        JSON.stringify({ t, ref, media: r.media, videos: r.videos }),
+      );
+      check(
+        `${W}×${H} etapa ${n}: tooltip e Nexo não cobrem o alvo nem um ao outro, dentro da tela`,
+        l.placement === 'right' &&
+          !inter(l.tooltip, l.target) &&
+          !inter(l.nexo, l.target, 12) &&
+          !inter(l.nexo, l.tooltip) &&
+          inside(l.tooltip) &&
+          inside(l.nexo),
+        JSON.stringify({
+          placement: l.placement,
+          nexoPlacement: l.nexoPlacement,
+          t: l.tooltip,
+          n: l.nexo,
+          a: l.target,
+        }),
       );
     }
-    check(`etapa ${n} (thumb): sem erros`, errors.length === 0, errors.join(' | '));
+    check(`${W}×${H}: etapas 6–8 sem erros`, errors.length === 0, errors.join(' | '));
     await context.close();
   }
-  const { page: p, context: c } = await newPage({ reducedMotion: 'reduce' });
-  await p.goto(`${base}?onboarding=reset&step=6`);
-  await ready(p, IDS[5]);
-  await p.waitForTimeout(800);
-  const r = await p.evaluate(() => ({
-    loop: !!document.querySelector('video.coach-loop'),
-    poster: document.querySelector('.coach-media img.coach-poster')?.naturalWidth ?? 0,
-  }));
-  check('etapa 6 com movimento reduzido: só a capa', !r.loop && r.poster > 0, JSON.stringify(r));
-  await c.close();
+}
+
+// ---------- 12b. Anel de foco: só com teclado, arredondado ----------
+{
+  const { page, context, errors } = await newPage();
+  const ring = (sel) =>
+    page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      const cs = getComputedStyle(el);
+      return {
+        focused: document.activeElement === el,
+        outline: cs.outlineStyle,
+        radius: cs.borderRadius,
+      };
+    }, sel);
+  const shown = (r) => r.focused && r.outline !== 'none' && r.radius !== '0px';
+  const hidden = (r) => r.outline === 'none';
+  await page.goto(`${base}?onboarding=reset&step=2#/ferramentas`);
+  await ready(page, 'agentes');
+  // Mouse: alto-falante (duas vezes: liga e pausa), Voltar e Próximo sem anel.
+  await page.click('.coach-audio');
+  const a1 = await ring('.coach-audio');
+  await page.click('.coach-audio');
+  const a2 = await ring('.coach-audio');
+  await page.mouse.move(700, 450);
+  await page.mouse.down();
+  await page.mouse.up();
+  // Teclado: Tab até o alto-falante, Voltar e Próximo; o anel aparece com cantos redondos.
+  const kb = {};
+  for (let k = 0; k < 4; k++) {
+    await page.keyboard.press('Tab');
+    const cls = await page.evaluate(() => document.activeElement?.className.split(' ')[0]);
+    if (['coach-audio', 'coach-back', 'coach-next'].includes(cls)) kb[cls] = await ring(`.${cls}`);
+  }
+  check(
+    'alto-falante: sem anel depois do clique com o mouse',
+    a1.focused && hidden(a1) && hidden(a2),
+    JSON.stringify({ a1, a2 }),
+  );
+  check(
+    'teclado: anel arredondado no alto-falante, Voltar e Próximo',
+    ['coach-audio', 'coach-back', 'coach-next'].every((c) => kb[c] && shown(kb[c])),
+    JSON.stringify(kb),
+  );
+  // Voltar e Próximo com o mouse: sem anel (Voltar leva à etapa 1, com foco no Próximo).
+  await page.click('.coach-back');
+  await ready(page, 'ferramentas');
+  const nx = await ring('.coach-next');
+  check(
+    'Voltar/Próximo pelo mouse: o foco que fica não mostra anel',
+    hidden(nx),
+    JSON.stringify(nx),
+  );
+  // Pin da etapa 3: foco inicial sem anel (mouse); Tab mostra anel arredondado.
+  await page.goto(`${base}?onboarding=reset&step=3#/ferramentas`);
+  await ready(page, 'conversas');
+  await page.mouse.click(700, 450);
+  const pinMouse = await ring('[data-coach="fav-conversas"]');
+  let pinKb = null;
+  for (let k = 0; k < 4 && !pinKb; k++) {
+    await page.keyboard.press('Tab');
+    const isPin = await page.evaluate(() =>
+      document.activeElement?.matches('[data-coach="fav-conversas"]'),
+    );
+    if (isPin) pinKb = await ring('[data-coach="fav-conversas"]');
+  }
+  check(
+    'pin da etapa 3: sem anel pelo mouse; com Tab, anel arredondado',
+    hidden(pinMouse) && pinKb && shown(pinKb),
+    JSON.stringify({ pinMouse, pinKb }),
+  );
+  check('anel de foco: sem erros', errors.length === 0, errors.join(' | '));
+  await context.close();
 }
 
 // ---------- 13. Etapa 9: o Nexo entra no vídeo do card (e sai ao voltar) ----------

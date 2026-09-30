@@ -43,6 +43,13 @@ img {
   outline-offset: 2px;
 }
 
+/* Anel de foco só na navegação por teclado. Alguns navegadores acendem :focus-visible
+   depois de um clique num botão; com a última interação sendo o ponteiro
+   (data-input, ver utils/inputModality.ts), nenhum anel aparece. */
+:root[data-input='pointer'] :focus-visible {
+  outline: none;
+}
+
 /* ---------- Sidebar (586:367) ---------- */
 
 .sidebar {

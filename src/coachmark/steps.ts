@@ -57,10 +57,10 @@ export type Step = {
   text: string;
   tooltip: {
     /**
-     * 'text' | 'preview' (demo do cursor) | 'video' (pôster + Play) | 'image' |
+     * 'text' | 'preview' (demo do cursor) | 'image' |
      * 'loop' (vídeo mudo em loop, sem controles, que começa quando o tooltip termina de entrar).
      */
-    kind: 'text' | 'preview' | 'video' | 'image' | 'loop';
+    kind: 'text' | 'preview' | 'image' | 'loop';
     placement: 'right' | 'left' | 'top' | 'bottom';
     /**
      * Posição do tooltip medida no Figma, relativa ao alvo:
@@ -72,10 +72,9 @@ export type Step = {
     media?: {
       poster: string;
       alt: string;
-      src?: string;
       /**
-       * Thumb em vídeo mudo em loop ('loop' e 'video'): fontes em ordem de preferência
-       * (WebM primeiro, MP4 de alternativa). A capa (`poster`) fica se falhar.
+       * Vídeo mudo em loop ('loop'): fontes em ordem de preferência (WebM primeiro, MP4
+       * de alternativa). A capa (`poster`) fica se falhar.
        */
       sources?: { src: string; type: string }[];
     };
@@ -176,32 +175,19 @@ export const STEPS: Step[] = [
     nexo: { offset: { x: 152.3, y: -29.7 }, facing: 'left', gesture: 'point' },
   }),
   step({
-    // 2350:51269 — card 2350:51461 (700,485 168×200); tooltip com vídeo 2483:6043 (890,485 378×360); Nexo (1206,456).
+    // 2350:51269 — card 2350:51461 (700,485 168×200). Tooltip só de texto (o vídeo saiu),
+    // no mesmo formato da etapa 8: 15 px abaixo do topo do card; Nexo como na 8.
     id: 'base',
     route: '/seu-negocio',
     target: '[data-coach="card-base"]',
     highlight: 'none',
     advanceOn: 'next',
     voice: 'step-06-base',
-    tooltip: {
-      kind: 'video',
-      placement: 'right',
-      offset: { x: 22, y: 0 },
-      media: {
-        poster: asset('video/base-conhecimento-poster.jpg'),
-        alt: 'Vídeo: Base de conhecimento',
-        // Thumb em loop sob o "Play"; o Play abre o vídeo completo (`src`).
-        sources: [
-          { src: asset('video/base-conhecimento.webm'), type: 'video/webm' },
-          { src: asset('video/base-conhecimento.mp4'), type: 'video/mp4' },
-        ],
-        src: asset('video/seu-negocio.webm'),
-      },
-    },
-    nexo: { offset: { x: 133.3, y: -124.7 }, facing: 'left', gesture: 'think' },
+    tooltip: { kind: 'text', placement: 'right', offset: { x: 22, y: 15 } },
+    nexo: { offset: { x: 133.3, y: -36.7 }, facing: 'left', gesture: 'think' },
   }),
   step({
-    // 2483:6066 — card 2483:6146 (876,485 168×200); tooltip com vídeo 2483:6219 (1060,485 378×360); Nexo (1381,460).
+    // 2483:6066 — card 2483:6146 (876,485 168×200). Tooltip só de texto, como na etapa 6.
     // O Figma traz "Seus catálogo … ficam aqui"; o texto correto (e gravado) é o do manifesto.
     id: 'produtos',
     route: '/seu-negocio',
@@ -209,21 +195,8 @@ export const STEPS: Step[] = [
     highlight: 'none',
     advanceOn: 'next',
     voice: 'step-07-produtos',
-    tooltip: {
-      kind: 'video',
-      placement: 'right',
-      offset: { x: 16, y: 0 },
-      media: {
-        poster: asset('video/produtos-servicos-poster.jpg'),
-        alt: 'Vídeo: Produtos e Serviços',
-        sources: [
-          { src: asset('video/produtos-servicos.webm'), type: 'video/webm' },
-          { src: asset('video/produtos-servicos.mp4'), type: 'video/mp4' },
-        ],
-        src: asset('video/seu-negocio.webm'),
-      },
-    },
-    nexo: { offset: { x: 138.3, y: -120.7 }, facing: 'left', gesture: 'point' },
+    tooltip: { kind: 'text', placement: 'right', offset: { x: 16, y: 15 } },
+    nexo: { offset: { x: 138.3, y: -36.7 }, facing: 'left', gesture: 'point' },
   }),
   step({
     // 2483:6244 — card 2483:6324 (1052,485 168×200); tooltip 2483:6342 (1240,500 378×162); Nexo (1551,460).

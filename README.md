@@ -82,7 +82,8 @@ python3 nexo-voice/build_voices.py       # a partir da raiz do app
 - **Ícone:** mostra a ação do clique. Alto-falante do Figma com a voz desligada ou pausada ("Ouvir o Nexo"); `Pause` do Phosphor, no mesmo tamanho e cor, enquanto a voz toca ("Pausar", `aria-pressed="true"`). Troca por crossfade de 120 ms.
 - **Espaço** com o foco no tooltip liga e pausa a voz.
 - **Pausar vale como desligar:** o áudio para, o texto inteiro fica branco, a boca volta ao padrão, o ícone volta a ser o alto-falante e o anel congela; nada avança sozinho nessa etapa. Ligar de novo recomeça a fala do zero (texto cinza, anel em 0%). As etapas seguintes entram sem voz até o usuário ligar de novo.
-- **Thumbs em vídeo** nas etapas 6 e 7 (`base-conhecimento` e `produtos-servicos`, WebM + MP4 + capa), no mesmo padrão da etapa 9; o "Play" e o "×" continuam por cima e o Play ainda abre o vídeo completo (pausando o thumb).
+- **Etapas 6, 7 e 8** usam o tooltip só de texto (sem vídeo). A **etapa 9** tem o vídeo do Waz e do Nexo em loop, e o Nexo 3D voa para dentro dele (o vídeo já o mostra).
+- **Anel de foco** só na navegação por teclado (`<html data-input>`, ver `src/utils/inputModality.ts`), com cantos acompanhando o botão.
 - **Etapa 1** não tem "Voltar" (fica invisível, ocupando o lugar); a **etapa 9** usa "Finalizar" (89×40), como no Figma.
 - **Emoji** solto (🧠, etapa 6) acende junto com a palavra anterior e não mexe a boca.
 - **Vídeo** (etapas 6 e 7): o Play pausa a fala ou o timer; sem voz, o timer volta a correr quando o vídeo para.
@@ -135,7 +136,7 @@ type Step = {
   voice: string; // fala gravada (chave do src/voice/voiceManifest.json)
   text: string; // preenchido a partir do manifesto (mesma divisão de palavras do grifo)
   tooltip: {
-    kind: 'text' | 'preview' | 'video' | 'image';
+    kind: 'text' | 'preview' | 'image' | 'loop';
     placement: 'right' | 'left' | 'top' | 'bottom';
     offset: { x: number; y: number }; // medido no Figma, relativo ao alvo
     media?: { poster: string; alt: string; src?: string }; // 378×210 no topo
@@ -158,7 +159,6 @@ type Step = {
 ## Pendências conhecidas
 
 - **Navegadores:** testado só no Chrome (desktop, macOS). Faltam Safari e Firefox.
-- **Vídeos das etapas 6 e 7:** os pôsteres vêm do Figma, mas os dois tocam o mesmo placeholder (`public/video/seu-negocio.webm`). Os vídeos finais devem ter também uma versão MP4 (H.264) para o Safari.
 - **Voz:** ver [docs/RELATORIO-voz.md](docs/RELATORIO-voz.md) (durações, método de marcação por etapa e conferência do filtro).
 - **Braços do Nexo:** o GLB é uma malha única, sem esqueleto, então os braços não se mexem e os gestos são do corpo inteiro. Para gestos de braço, é preciso um GLB com esqueleto real.
 - **Render:** aparecem pontos de brilho serrilhado na silhueta do casco. A tela do modelo é mais larga que a do PNG de referência (limite da geometria).

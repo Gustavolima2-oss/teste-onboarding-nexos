@@ -1,5 +1,5 @@
 // Coach mark do onboarding (fase 2): overlay desfocado, destaque dos alvos,
-// tooltip (texto, prévia animada ou vídeo), 7 bolinhas de progresso, botão de
+// tooltip (texto, prévia animada ou vídeo em loop), 7 bolinhas de progresso, botão de
 // narração, trava de rolagem e teclado.
 //
 // O destaque é uma classe no próprio elemento (nada é clonado). Alvos em grupo
@@ -66,8 +66,6 @@ export type CoachmarkOptions = {
   onAction?: (index: number, el: HTMLElement) => void;
   /** Alto-falante (ou Espaço no tooltip): pausa/retoma a fala, ou liga o som no modo silencioso. */
   onVoiceToggle?: () => void;
-  /** Vídeo do tooltip começou/parou. */
-  onVideo?: (playing: boolean) => void;
   /** Extensão da silhueta do Nexo relativa ao centro do corpo (px). */
   nexoExtents?: () => Extents;
   /** Chamado a cada layout (etapa nova ou resize), para reposicionar o Nexo. */
@@ -126,7 +124,6 @@ export class Coachmark {
   private scrollLock: { overflow: string; paddingRight: string } | null = null;
   private opened = false;
   private demo: PreviewDemo | null = null;
-  private video: HTMLVideoElement | null = null;
   /** Vídeo em loop do topo do tooltip (kind 'loop'), criado quando o tooltip termina de entrar. */
   private loopVideo: HTMLVideoElement | null = null;
   private voiceState: VoiceButtonState | null = null;
@@ -425,7 +422,6 @@ export class Coachmark {
    */
   startLoop(): void {
     const step = this.opts.steps[this.index];
-    // Thumb em loop: kind 'loop' (etapa 9) e 'video' com `sources` (etapas 6 e 7, sob o Play).
     const media = step?.tooltip.media;
     if (!media?.sources?.length || this.loopVideo || prefersReducedMotion()) return;
     const v = document.createElement('video');
@@ -704,32 +700,7 @@ export class Coachmark {
       this.mediaEl.innerHTML = `<img class="coach-poster" src="${t.media.poster}" alt="${t.media.alt}" />`;
     } else if (t.kind === 'image' && t.media) {
       this.mediaEl.innerHTML = `<img class="coach-poster" src="${t.media.poster}" alt="${t.media.alt}" />`;
-    } else if (t.kind === 'video' && t.media) {
-      this.mediaEl.innerHTML = `
-        <img class="coach-poster" src="${t.media.poster}" alt="${t.media.alt}" />
-        <span class="coach-poster-shade" aria-hidden="true"></span>
-        <button type="button" class="coach-play"><img src="${asset('images/onboarding/play.svg')}" alt="" width="10" height="10" /><span>Play</span></button>
-        ${close}`;
     }
-  }
-
-  private playVideo(): void {
-    const step = this.opts.steps[this.index];
-    const src = step?.tooltip.media?.src;
-    if (!src || this.video) return;
-    const v = document.createElement('video');
-    v.className = 'coach-video';
-    v.src = src;
-    v.playsInline = true;
-    v.muted = true;
-    v.setAttribute('aria-label', step?.tooltip.media?.alt ?? 'Vídeo');
-    v.addEventListener('ended', () => this.stopFullVideo());
-    this.loopVideo?.pause(); // o vídeo completo toma o lugar do thumb
-    this.mediaEl.classList.add('is-playing');
-    this.mediaEl.prepend(v);
-    this.video = v;
-    void v.play().catch(() => this.stopFullVideo());
-    this.opts.onVideo?.(true);
   }
 
   private stopMedia(): void {
@@ -738,20 +709,6 @@ export class Coachmark {
       this.loopVideo.pause();
       this.loopVideo.remove();
       this.loopVideo = null;
-    }
-    this.stopFullVideo();
-  }
-
-  /** Fecha só o vídeo do "Play" (fim ou erro) e devolve o thumb em loop. */
-  private stopFullVideo(): void {
-    if (!this.video) return;
-    this.video.pause();
-    this.video.remove();
-    this.video = null;
-    this.mediaEl.classList.remove('is-playing');
-    this.opts.onVideo?.(false);
-    if (this.loopVideo && !this.tooltip.hidden && !document.hidden) {
-      void this.loopVideo.play().catch(() => undefined);
     }
   }
 
@@ -898,7 +855,6 @@ export class Coachmark {
     else if (btn === this.backButton) this.opts.onBack(this.index);
     else if (btn === this.audioButton) this.opts.onVoiceToggle?.();
     else if (btn.classList.contains('coach-close')) this.opts.onClose();
-    else if (btn.classList.contains('coach-play')) this.playVideo();
   };
 
   /**
@@ -942,9 +898,9 @@ export class Coachmark {
     }
     if (this.tooltip.hidden) return;
     const active = document.activeElement;
-    // Setas e Enter navegam, exceto dentro do vídeo (setas = busca) ou de outro campo.
-    const inMedia = active instanceof HTMLVideoElement || active instanceof HTMLInputElement;
-    if (!inMedia && !e.altKey && !e.metaKey && !e.ctrlKey) {
+    // Setas e Enter navegam, exceto dentro de um campo.
+    const inField = active instanceof HTMLInputElement;
+    if (!inField && !e.altKey && !e.metaKey && !e.ctrlKey) {
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault();
         const btn = e.key === 'ArrowLeft' ? this.backButton : this.nextButton;
@@ -992,7 +948,7 @@ export class Coachmark {
     const v = this.loopVideo;
     if (!v) return;
     if (document.hidden) v.pause();
-    else if (!this.tooltip.hidden && !this.video) void v.play().catch(() => undefined);
+    else if (!this.tooltip.hidden) void v.play().catch(() => undefined);
   };
 
   private handleResize = (): void => {

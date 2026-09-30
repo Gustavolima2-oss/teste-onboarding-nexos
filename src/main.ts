@@ -90,7 +90,6 @@ function installShortcuts(): void {
     if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
     const t = e.target;
     if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
-    if (t instanceof HTMLVideoElement) return;
     const reload = (search: string, route: string) => {
       history.replaceState(null, '', `${location.pathname}${search}#${route}`);
       location.reload();
@@ -313,20 +312,6 @@ async function start(): Promise<void> {
         void voice.enableVoice();
       }
     },
-    onVideo: (playing) => {
-      const layout = coach.layout;
-      if (playing) {
-        voice.pause(); // fala ou timer
-        void nexo.gesture('idle');
-        nexo.setExpression('listen');
-        if (layout) nexo.lookAt(tooltipCenter(layout));
-      } else {
-        nexo.setExpression('smile');
-        void nexo.gesture('think');
-        // Sem voz, o timer de leitura volta a correr quando o vídeo para.
-        if (!voice.isVoice && voice.isPaused) void voice.resume();
-      }
-    },
   });
   /**
    * Depois da chegada: tooltip e gesto começam juntos; a fala começa quando o tooltip
@@ -357,7 +342,7 @@ async function start(): Promise<void> {
     const next = STEPS[STEPS.indexOf(step) + 1];
     if (next) voice.preload(next.voice);
     if (step.tooltip.kind === 'preview') coach.startDemo();
-    // Thumb em vídeo (etapas 6, 7 e 9): começa com o tooltip já na tela.
+    // Vídeo em loop (etapa 9): começa com o tooltip já na tela.
     if (step.tooltip.media?.sources) coach.startLoop();
   }
 

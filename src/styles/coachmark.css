@@ -119,9 +119,8 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   display: none;
 }
 
-/* Com mídia (prévia, vídeo, imagem) no topo: ela encosta nas bordas, só pb 24. */
+/* Com mídia (prévia, imagem, vídeo em loop) no topo: ela encosta nas bordas, só pb 24. */
 .coach-tooltip[data-kind='preview'],
-.coach-tooltip[data-kind='video'],
 .coach-tooltip[data-kind='image'],
 .coach-tooltip[data-kind='loop'] {
   padding-top: 0;
@@ -180,6 +179,8 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   height: 18px;
   padding: 0;
   border: 0;
+  /* O anel de foco acompanha o botão (círculo em volta do ícone), sem quadrado. */
+  border-radius: 50%;
   background: none;
   cursor: pointer;
 }
@@ -331,6 +332,11 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   outline-offset: 2px;
 }
 
+/* Ícone de 18 px: o anel fica um pouco mais afastado para não encostar no desenho. */
+.coach-tooltip .coach-audio:focus-visible {
+  outline-offset: 3px;
+}
+
 /* ---------- Mídia (prévia e vídeo): 378×210 no topo ---------- */
 
 .coach-media {
@@ -360,53 +366,14 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   z-index: 2;
 }
 
-/* Vídeo (2350:51481): poster + gradiente + botão Play central. */
+/* Capa e vídeo em loop (etapa 9): cobrem a mídia inteira. */
 .coach-poster,
-.coach-video,
 .coach-loop {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-
-.coach-poster-shade {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 33.925%, rgba(0, 0, 0, 0.6));
-  pointer-events: none;
-}
-
-.coach-play {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 9px 11px;
-  border: 1.3px solid rgba(255, 255, 255, 0.3);
-  border-radius: 90px;
-  background: #000;
-  color: var(--white);
-  font-family: var(--font-inter);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: normal;
-  transform: translate(-50%, -50%);
-  cursor: pointer;
-}
-
-.coach-media.is-playing .coach-poster,
-.coach-media.is-playing .coach-loop,
-.coach-media.is-playing .coach-poster-shade,
-.coach-media.is-playing .coach-play {
-  display: none;
-}
-
-.coach-video {
-  z-index: 1;
 }
 
 /* Prévia (2350:46911): card, ícone de fixar, mini tooltip e cursor animados. */
