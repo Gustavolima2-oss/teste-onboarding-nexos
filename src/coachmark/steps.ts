@@ -89,6 +89,12 @@ export type Step = {
     offset: { x: number; y: number };
     facing: 'left' | 'right';
     gesture: Gesture;
+    /**
+     * A mídia do tooltip já mostra o Nexo: ao entrar na etapa, o Nexo 3D voa para dentro
+     * dela e fica fora de cena (sem render) até sair da etapa. O offset continua valendo
+     * para o layout do tooltip.
+     */
+    intoMedia?: boolean;
   };
   /**
    * Efeitos de ter passado por esta etapa, valendo da etapa seguinte em diante.
@@ -251,7 +257,8 @@ export const STEPS: Step[] = [
         ],
       },
     },
-    nexo: { offset: { x: 152.3, y: -62.7 }, facing: 'left', gesture: 'wave' },
+    // O vídeo já mostra o Nexo: o 3D entra nele (senão pareceriam dois).
+    nexo: { offset: { x: 152.3, y: -62.7 }, facing: 'left', gesture: 'wave', intoMedia: true },
   }),
 ];
 

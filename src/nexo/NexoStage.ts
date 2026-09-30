@@ -383,6 +383,11 @@ export class NexoStage {
     gsap.ticker.remove(this.loop);
   }
 
+  /** Loop de render ligado (desligado com o Nexo fora de cena). */
+  get isRunning(): boolean {
+    return this.running;
+  }
+
   /**
    * Mede o custo de um quadro: renderiza `frames` quadros seguidos, cada um com
    * gl.finish() (espera a GPU), e devolve a média em ms. Só para diagnóstico.

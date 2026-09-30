@@ -126,6 +126,9 @@ const targetCenter = (l: StepLayout): Point => ({
   x: l.target.x + l.target.w / 2,
   y: l.target.y + l.target.h / 2,
 });
+/** Onde o Nexo fica na etapa: a âncora dele, ou o centro da mídia em que entrou (intoMedia). */
+const mediaCenter = (l: StepLayout): Point | null =>
+  l.media ? { x: l.media.x + l.media.w / 2, y: l.media.y + l.media.h / 2 } : null;
 
 /**
  * Aplica o estado do fluxo da etapa `index` (derivado de steps.ts): serve para os
@@ -280,7 +283,7 @@ async function start(): Promise<void> {
     onLayout: (layout, reason) => {
       // Resize: reposiciona sem animar (se estiver voando, o voo é concluído no destino novo).
       if (reason !== 'resize') return;
-      nexo.placeAt(center(layout));
+      nexo.placeAt((nexo.isVanished && mediaCenter(layout)) || center(layout));
       nexo.lookAt(tooltipCenter(layout));
     },
     onNext: (index) => {
@@ -337,7 +340,10 @@ async function start(): Promise<void> {
     debug.setStep(step.id);
     busy = false;
     coach.prepareText(voiceOn);
-    await coach.showTooltip();
+    const shown = coach.showTooltip();
+    // O Nexo acabou de entrar na mídia: o vídeo começa junto com o tooltip.
+    if (step.nexo.intoMedia) coach.startLoop();
+    await shown;
     if (closing || STEPS[current] !== step) return;
     setState('ready', step.id);
     if (step.advanceOn === 'action' && !voiceOn) {
@@ -459,12 +465,25 @@ async function start(): Promise<void> {
       layout = await coach.goTo(to, { highlight: false });
     }
 
+    /**
+     * Voo do Nexo até a etapa: para dentro da mídia (intoMedia: o vídeo já o mostra), de
+     * dentro dela (voltando dessa etapa) ou o voo normal.
+     */
+    const moveNexo = (duration?: number): Promise<void> => {
+      const media = step.nexo.intoMedia ? mediaCenter(layout) : null;
+      if (media) return nexo.vanishInto(media, { duration });
+      const opts = { facing: step.nexo.facing, duration };
+      return nexo.isVanished
+        ? nexo.emergeTo(center(layout), opts)
+        : nexo.flyTo(center(layout), opts);
+    };
+
     const tl = gsap.timeline();
     transition = tl;
     const stale = () => closing || transition !== tl;
     if (!cross) {
       // O NexoGuide relaxa 100 ms (junto com a saída do tooltip) e então decola.
-      const flight = nexo.flyTo(center(layout), { facing: step.nexo.facing });
+      const flight = moveNexo();
       tl.call(() => coach.highlight(TARGET_TRANSITION_MS), [], SAME_SCREEN.takeoff);
       await tl.then();
       await hidden;
@@ -472,10 +491,9 @@ async function start(): Promise<void> {
     } else {
       const c = CROSS_SCREEN;
       // O voo cobre overlay saindo + tela entrando + tela limpa; chega quando o overlay volta.
-      const flight = nexo.flyTo(center(layout), {
-        facing: step.nexo.facing,
-        duration: c.tooltipOut - NEXO_RELAX + c.overlayOut + c.screenIn + CLEAN_SCREEN_HOLD_S,
-      });
+      const flight = moveNexo(
+        c.tooltipOut - NEXO_RELAX + c.overlayOut + c.screenIn + CLEAN_SCREEN_HOLD_S,
+      );
       let swapped: Promise<void> = Promise.resolve();
       tl.call(
         () => {
@@ -519,7 +537,8 @@ async function start(): Promise<void> {
     transition = null;
     coach.setBusy(true);
     const hidden = coach.hideTooltip();
-    if (withGesture) await nexo.gesture('bye');
+    // Com o Nexo dentro da mídia (etapa 9), sem tchau nem voo de saída: só tooltip e overlay.
+    if (withGesture && !nexo.isVanished) await nexo.gesture('bye');
     const exited = nexo.exit();
     coach.unhighlight(TARGET_TRANSITION_MS);
     await Promise.all([hidden, coach.dim(0, 0.45, 'power2.inOut'), exited]);
@@ -542,7 +561,12 @@ async function start(): Promise<void> {
     () => {
       // Refaz o layout com a silhueta real do modelo (antes valia a caixa do Figma).
       layout = coach.relayout() ?? layout;
-      void nexo.appearAt(center(layout)).then(async () => {
+      // Aberta direto numa etapa intoMedia (?step=9): o Nexo já começa dentro da mídia.
+      const media = first.nexo.intoMedia ? mediaCenter(layout) : null;
+      const arrived = media
+        ? nexo.vanishInto(media, { animate: false })
+        : nexo.appearAt(center(layout));
+      void arrived.then(async () => {
         if (closing) return;
         // Escurecimento, destaque, tooltip e aceno começam juntos.
         void coach.dim(1, OPENING.dimDuration, 'power2.inOut');

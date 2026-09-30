@@ -445,6 +445,9 @@ const recorder = () => {
         focus: document.activeElement?.className,
         nexoOff: layout ? Math.hypot(pos.x - layout.nexoAnchor.x, pos.y - layout.nexoAnchor.y) : -1,
         flying: nexo.isFlying,
+        vanished: nexo.isVanished,
+        running: nexo.debugStage?.isRunning ?? false,
+        nexoOpacity: nexo.debugStage?.motion.opacity,
         sameCanvas: window.__canvas === document.querySelector('.nexo-canvas'),
         overlays: document.querySelectorAll('.coach-overlay').length,
         screens: document.querySelectorAll('.screen:not(.is-probe)').length,
@@ -471,7 +474,10 @@ const recorder = () => {
       s.nextDisabled === (i === ACTION_STEP) &&
       s.tipOpacity === 1 &&
       s.focus?.split(' ')[0] === focusFor(i) &&
-      s.nexoOff < 1 &&
+      // Etapa 9: o Nexo entrou no vídeo (invisível, sem render); nas outras, na âncora.
+      (IDS[i] === 'waz'
+        ? s.vanished && !s.running && s.nexoOpacity === 0
+        : !s.vanished && s.running && s.nexoOpacity === 1 && s.nexoOff < 1) &&
       !s.flying &&
       s.sameCanvas &&
       s.overlays === 1 &&
@@ -1262,6 +1268,217 @@ const recorder = () => {
   }));
   check('etapa 6 com movimento reduzido: só a capa', !r.loop && r.poster > 0, JSON.stringify(r));
   await c.close();
+}
+
+// ---------- 13. Etapa 9: o Nexo entra no vídeo do card (e sai ao voltar) ----------
+{
+  /** Grava escala, opacidade e voo do Nexo por quadro até `until` ficar verdadeiro. */
+  const track = (page, until) =>
+    page.evaluate(async (until) => {
+      const { nexo } = window.__nexo;
+      const m = nexo.debugStage.motion;
+      const log = [];
+      const t0 = performance.now();
+      await new Promise((resolve) => {
+        const tick = () => {
+          const tip = document.querySelector('.coach-tooltip');
+          log.push({
+            t: performance.now() - t0,
+            flying: nexo.isFlying,
+            scale: m.scale,
+            opacity: m.opacity,
+            tip: tip && !tip.hidden ? Number(getComputedStyle(tip).opacity) : 0,
+          });
+          const d = document.documentElement.dataset;
+          if (d.coachState === 'ready' && d.coachStep === until) resolve();
+          else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
+      return log;
+    }, until);
+  const scene = (page) =>
+    page.evaluate(() => {
+      const { nexo, coach } = window.__nexo;
+      const st = nexo.debugStage;
+      const l = coach.layout;
+      const pos = nexo.position;
+      const media = l.media && { x: l.media.x + l.media.w / 2, y: l.media.y + l.media.h / 2 };
+      return {
+        vanished: nexo.isVanished,
+        running: st.isRunning,
+        opacity: st.motion.opacity,
+        idle: st.idle.amount,
+        frames: st.stats.frames,
+        offAnchor: Math.hypot(pos.x - l.nexoAnchor.x, pos.y - l.nexoAnchor.y),
+        offMedia: media ? Math.hypot(pos.x - media.x, pos.y - media.y) : -1,
+      };
+    });
+  const flightOf = (log) => {
+    const f = log.filter((r) => r.flying);
+    return {
+      ms: f.length ? f[f.length - 1].t - f[0].t : 0,
+      minScale: Math.min(...f.map((r) => r.scale)),
+      maxScale: Math.max(...f.map((r) => r.scale)),
+      // O tooltip antigo pode estar saindo; o novo não pode aparecer (0 → visível) no voo.
+      tipDuring: log.some((r, k) => k && r.flying && log[k - 1].tip === 0 && r.tip > 0),
+    };
+  };
+
+  const { page, context, errors } = await newPage();
+  await page.goto(`${base}?onboarding=reset&step=8#/seu-negocio`);
+  await ready(page, 'integracoes');
+  const go9 = track(page, 'waz');
+  await page.click('.coach-next');
+  const inLog = await go9;
+  const inF = flightOf(inLog);
+  // Escala e opacidade só descem ao longo do voo (sem overshoot).
+  // dir −1: só desce; 1: só sobe (sem overshoot).
+  const monotone = (log, key, dir) =>
+    log.filter((r) => r.flying).every((r, k, a) => !k || dir * (r[key] - a[k - 1][key]) >= -1e-6);
+  check(
+    '8→9: o Nexo voa para o vídeo encolhendo (1 → 0,3) e sumindo (1 → 0), ~700 ms, sem overshoot',
+    inF.ms > 550 &&
+      inF.ms < 900 &&
+      inF.minScale >= 0.3 - 1e-6 &&
+      inF.maxScale <= 1 + 1e-6 &&
+      monotone(inLog, 'scale', -1) &&
+      monotone(inLog, 'opacity', -1),
+    JSON.stringify(inF),
+  );
+  check('8→9: o tooltip só entra depois que o Nexo some', !inF.tipDuring);
+  await page.waitForFunction(
+    () => {
+      const v = document.querySelector('video.coach-loop');
+      return v && !v.paused;
+    },
+    null,
+    { timeout: 4000 },
+  );
+  const s9 = await scene(page);
+  // Mouse passeando: não pode acordar o render nem o olhar.
+  await page.mouse.move(200, 200);
+  await page.mouse.move(900, 600, { steps: 12 });
+  await page.waitForTimeout(800);
+  const s9b = await scene(page);
+  check(
+    'etapa 9: Nexo 3D invisível, dentro do vídeo, sem flutuação e com o loop de render parado',
+    s9.vanished &&
+      !s9.running &&
+      s9.opacity === 0 &&
+      s9.idle === 0 &&
+      s9.offMedia < 1 &&
+      s9b.frames === s9.frames &&
+      !s9b.running,
+    JSON.stringify({ s9, s9b }),
+  );
+  // Voz ligada na etapa 9: grifo e anel andam, a boca não mexe.
+  await page.click('.coach-audio');
+  await page.waitForFunction(() => (window.__nexo.voice.lastFrame?.spoken ?? 0) >= 2, null, {
+    timeout: 8000,
+  });
+  const talk = await page.evaluate(() => ({
+    spoken: document.querySelectorAll('.coach-say .is-spoken').length,
+    progress: window.__nexo.voice.lastFrame?.progress ?? 0,
+    face: window.__nexo.nexo.debugStage.face.current,
+    frames: window.__nexo.nexo.debugStage.stats.frames,
+  }));
+  check(
+    'etapa 9 com voz: fala com grifo e gradiente, sem animação de boca e sem render',
+    talk.spoken >= 2 && talk.progress > 0 && talk.face !== 'talk' && talk.frames === s9.frames,
+    JSON.stringify(talk),
+  );
+  // Voltar para a 8: sai do vídeo crescendo e aparecendo, até a posição da etapa 8.
+  const back8 = track(page, 'integracoes');
+  await page.click('.coach-back');
+  const outLog = await back8;
+  const outF = flightOf(outLog);
+  await page.waitForTimeout(300);
+  const s8 = await scene(page);
+  check(
+    '9→8: o Nexo sai do vídeo crescendo (0,3 → 1) e volta à posição da etapa 8',
+    outF.ms > 550 &&
+      outF.minScale >= 0.3 - 1e-6 &&
+      outF.maxScale <= 1 + 1e-6 &&
+      monotone(outLog, 'scale', 1) &&
+      monotone(outLog, 'opacity', 1) &&
+      !outF.tipDuring &&
+      !s8.vanished &&
+      s8.running &&
+      s8.opacity === 1 &&
+      s8.offAnchor < 1,
+    JSON.stringify({ outF, s8 }),
+  );
+  // De novo para a 9 e Finalizar: sem voo de saída, só tooltip e overlay somem.
+  await page.click('.coach-next');
+  await ready(page, 'waz');
+  await page.click('.coach-next');
+  await page.waitForFunction(() => document.documentElement.dataset.coachState === 'closed', null, {
+    timeout: 8000,
+  });
+  const end = await page.evaluate(() => ({
+    overlay: !!document.querySelector('.coach-overlay'),
+    tooltip: !!document.querySelector('.coach-tooltip'),
+    opacity: window.__nexo.nexo.debugStage.motion.opacity,
+    running: window.__nexo.nexo.debugStage.isRunning,
+  }));
+  check(
+    'etapa 9: Finalizar encerra sem o voo de saída (overlay e tooltip saem, Nexo segue oculto)',
+    !end.overlay && !end.tooltip && end.opacity === 0 && !end.running,
+    JSON.stringify(end),
+  );
+  check('etapa 9 (Nexo no vídeo): sem erros', errors.length === 0, errors.join(' | '));
+  await context.close();
+
+  // Aberta direto na 9 (?step=9): o Nexo já começa dentro do vídeo.
+  {
+    const { page: p, context: c, errors: e } = await newPage();
+    await p.goto(`${base}?onboarding=reset&step=9`);
+    await ready(p, 'waz');
+    const s = await scene(p);
+    check(
+      '?step=9: o Nexo não aparece (já está no vídeo) e o render fica parado',
+      s.vanished && !s.running && s.opacity === 0 && e.length === 0,
+      JSON.stringify({ s, e }),
+    );
+    await c.close();
+  }
+
+  // Movimento reduzido: sem voo, só fade de 200 ms (sumindo e reaparecendo).
+  {
+    const { page: p, context: c, errors: e } = await newPage({ reducedMotion: 'reduce' });
+    await p.goto(`${base}?onboarding=reset&step=8#/seu-negocio`);
+    await ready(p, 'integracoes');
+    const inR = track(p, 'waz');
+    await p.click('.coach-next');
+    const logIn = await inR;
+    const r9 = await scene(p);
+    const outR = track(p, 'integracoes');
+    await p.click('.coach-back');
+    const logOut = await outR;
+    await p.waitForTimeout(300);
+    const r8 = await scene(p);
+    const noFlight = (log) => log.every((r) => r.scale === 1 || r.scale === 0.3);
+    const fadeMs = (log) => {
+      const f = log.filter((r) => r.flying);
+      return f.length ? f[f.length - 1].t - f[0].t : 0;
+    };
+    check(
+      'movimento reduzido: o Nexo some e reaparece com fade de 200 ms, sem voo',
+      noFlight(logIn) &&
+        noFlight(logOut) &&
+        fadeMs(logIn) < 320 &&
+        fadeMs(logOut) < 320 &&
+        r9.vanished &&
+        !r9.running &&
+        !r8.vanished &&
+        r8.opacity === 1 &&
+        r8.offAnchor < 1 &&
+        e.length === 0,
+      JSON.stringify({ r9, r8, in: fadeMs(logIn), out: fadeMs(logOut), e }),
+    );
+    await c.close();
+  }
 }
 
 await browser.close();

@@ -82,6 +82,8 @@ export type StepLayout = {
   nexo: Rect;
   nexoAnchor: { x: number; y: number };
   nexoPlacement: Placement;
+  /** Mídia do topo do tooltip (378×210), em px da viewport; null sem mídia. */
+  media: Rect | null;
 };
 
 /** O ícone mostra a AÇÃO do clique: alto-falante (voz desligada ou pausada) ou pausa (tocando). */
@@ -770,13 +772,21 @@ export class Coachmark {
     ];
   }
 
-  private tooltipSize(): { w: number; h: number } {
+  /** Tamanho do tooltip e a caixa da mídia relativa a ele (medidos mesmo com ele oculto). */
+  private tooltipSize(): { w: number; h: number; media: Rect | null } {
     const wasHidden = this.tooltip.hidden;
     if (wasHidden) {
       this.tooltip.style.visibility = 'hidden';
       this.tooltip.hidden = false;
     }
-    const size = { w: this.tooltip.offsetWidth, h: this.tooltip.offsetHeight };
+    const m = this.mediaEl;
+    const size = {
+      w: this.tooltip.offsetWidth,
+      h: this.tooltip.offsetHeight,
+      media: m.hidden
+        ? null
+        : { x: m.offsetLeft, y: m.offsetTop, w: m.offsetWidth, h: m.offsetHeight },
+    };
     if (wasHidden) {
       this.tooltip.hidden = true;
       this.tooltip.style.visibility = '';
@@ -812,6 +822,7 @@ export class Coachmark {
       nexo: nexo.rect,
       nexoAnchor: nexo.anchor,
       nexoPlacement: nexo.placement,
+      media: size.media && { ...size.media, x: rect.x + size.media.x, y: rect.y + size.media.y },
     };
     this.lastLayout = layout;
     this.opts.onLayout?.(layout, reason);
