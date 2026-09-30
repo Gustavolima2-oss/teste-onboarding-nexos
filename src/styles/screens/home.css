@@ -96,3 +96,58 @@
   font-weight: var(--fw-bold);
   line-height: 22px;
 }
+
+/* Com a mensagem do Waz (Figma 2631:3475 / 2631:3583): a linha vira um card branco de
+   832×96 em (508, 325) — 36 px à esquerda da coluna e 4 px acima da linha sem mensagem —,
+   padding 16, raio 16. Avatar 64; nome 17/22 e mensagem 15/20 a 16 px do avatar; bolinha
+   de não lida (12 px, Accents/Indigo) à direita, a 9 px do texto; divisor no pé da coluna. */
+.member.has-message {
+  width: var(--content-w);
+  height: 96px;
+  margin: -4px 0 0 -36px;
+  padding: 0;
+  border-radius: 16px;
+  background: var(--white);
+}
+
+.member.has-message .member-avatar {
+  left: 16px;
+  top: 16px;
+}
+
+.member.has-message .member-text {
+  left: 96px;
+  right: 37px;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.member.has-message .member-name {
+  letter-spacing: -0.43px;
+}
+
+.member-message {
+  height: 21px;
+  font-size: 15px;
+  font-weight: var(--fw-semibold);
+  line-height: 20px;
+  letter-spacing: -0.23px;
+  color: var(--gray-black);
+  white-space: nowrap;
+}
+
+.member-unread {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  width: 12px;
+  height: 12px;
+}
+
+.member.has-message::after {
+  left: 96px;
+  right: 16px;
+  top: 79.5px;
+}

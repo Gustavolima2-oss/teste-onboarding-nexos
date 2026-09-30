@@ -2,12 +2,14 @@
 // (voiceManifest.json, gerado por nexo-voice/build_voices.py).
 //
 // O VoicePlayer é o relógio de cada etapa, em dois modos:
-// - TIMER (padrão, sem voz): um relógio interno de max(duração × SILENT_TIMER_FACTOR,
-//   SILENT_TIMER_MIN_MS) enche o anel do "Próximo" e avança sozinho no fim. Texto inteiro
-//   em branco, boca parada.
-// - VOZ (depois do clique no alto-falante): o relógio é `audio.currentTime`, lido a cada
-//   quadro (gsap.ticker = requestAnimationFrame), nunca por timers próprios. Publica as
-//   palavras já ditas (grifo), a palavra ativa e o volume (boca).
+// - VOZ (padrão): o relógio é `audio.currentTime`, lido a cada quadro (gsap.ticker =
+//   requestAnimationFrame), nunca por timers próprios. Publica as palavras já ditas
+//   (grifo), a palavra ativa e o volume (boca).
+// - TEXTO (pausa do usuário, ou autoplay bloqueado): um relógio interno de
+//   max(duração × SILENT_TIMER_FACTOR, SILENT_TIMER_MIN_MS) enche o anel do "Próximo".
+//   Texto inteiro em branco, boca parada.
+// Em qualquer modo, o fim do relógio chega em `onEnd(id, voice)`; quem decide se avança
+// sozinho (só com voz) é o orquestrador.
 
 import { gsap } from 'gsap';
 import manifest from './voiceManifest.json';
@@ -23,7 +25,7 @@ export type VoiceClip = {
 };
 export const VOICES: Record<string, VoiceClip> = manifest;
 
-/** Modo sem voz: o timer dura a fala × este fator (bem mais lento que a fala, para ler)… */
+/** Modo texto: o timer dura a fala × este fator (bem mais lento que a fala, para ler)… */
 export const SILENT_TIMER_FACTOR = 2.5;
 /** …com este mínimo (ms). */
 export const SILENT_TIMER_MIN_MS = 6000;
@@ -163,20 +165,6 @@ export class VoicePlayer {
     await this.begin(voice);
   }
 
-  /**
-   * Prepara a etapa SEM relógio (etapa que só avança por ação do usuário, sem voz): nada
-   * corre e nada avança sozinho, mas o alto-falante pode ligar a voz dela.
-   */
-  arm(id: string): void {
-    this.stop();
-    const clip = VOICES[id];
-    if (!clip) return;
-    this.id = id;
-    this.clip = clip;
-    this.el = this.audioFor(id);
-    this.emit();
-  }
-
   /** Liga a voz na etapa atual (clique no alto-falante): áudio do início, anel do zero. */
   async enableVoice(): Promise<void> {
     if (!this.clip) return;
@@ -188,10 +176,52 @@ export class VoicePlayer {
   }
 
   /**
-   * Pausa. Com voz, vale como DESLIGAR: o áudio para, o texto inteiro acende (como no modo
-   * sem voz), a boca volta ao padrão e o anel congela; nada avança sozinho. Ligar de novo
-   * (enableVoice) recomeça a fala do zero. No timer, congela o relógio (vídeo, aba oculta).
+   * Pausa do usuário na fala: passa ao modo TEXTO. O áudio para, o texto inteiro acende
+   * e a boca volta ao padrão; o anel continua de onde estava, no ritmo do modo texto
+   * (proporcional ao que falta). Ligar de novo (enableVoice) recomeça a fala do zero.
    */
+  toText(): void {
+    const clip = this.clip;
+    if (!clip || !this.voice) return;
+    const p = this.mode === 'ended' ? 1 : this.shown;
+    this.token++; // cancela um play() pendente
+    this.el?.pause();
+    this.voice = false;
+    if (this.mode === 'ended') {
+      this.emit();
+      return;
+    }
+    const t = p * silentDuration(clip);
+    if (this.mode === 'paused') {
+      // Aba em segundo plano: continua pausado, já no relógio do modo texto.
+      this.pausedAt = t;
+      this.clock = { t, since: 0 };
+    } else {
+      this.mode = 'playing';
+      this.clock = { t, since: performance.now() };
+      this.startLoop();
+    }
+    this.emit();
+  }
+
+  /** Testes e depuração: leva o relógio da etapa ao fim agora (fala ou timer). */
+  skip(): void {
+    const clip = this.clip;
+    if (!clip || this.mode === 'ended') return;
+    if (this.voice && this.el) {
+      try {
+        this.el.currentTime = clip.duration;
+      } catch {
+        /* sem metadados ainda */
+      }
+    } else if (this.mode === 'paused') {
+      this.pausedAt = this.span();
+    } else {
+      this.clock = { t: this.span(), since: performance.now() };
+    }
+  }
+
+  /** Congela o relógio (aba em segundo plano); `resume()` continua de onde parou. */
   pause(): void {
     if (this.mode !== 'playing') return;
     this.pausedAt = this.time();
@@ -201,10 +231,7 @@ export class VoicePlayer {
     this.emit();
   }
 
-  /**
-   * Retoma de onde parou. Só para pausas automáticas (aba em segundo plano, vídeo): a
-   * pausa do usuário na voz não retoma, ele liga a voz de novo e ela recomeça do zero.
-   */
+  /** Retoma de onde parou (volta da aba em segundo plano). */
   async resume(): Promise<void> {
     if (this.mode !== 'paused' || !this.clip) return;
     this.hiddenPause = false;
@@ -290,9 +317,12 @@ export class VoicePlayer {
     }
   }
 
-  /** `play()` rejeitado: a etapa segue no modo sem voz, do começo do timer. */
+  /**
+   * `play()` rejeitado (autoplay bloqueado antes da primeira interação): a etapa segue no
+   * modo texto, do começo do timer. Não é erro: o primeiro clique libera o áudio.
+   */
   private fallBack(err: unknown): void {
-    console.warn('[Nexo] a voz não pôde tocar; seguindo sem voz nesta etapa', err);
+    console.info('[Nexo] a voz não pôde tocar; esta etapa segue no modo texto', err);
     this.el?.pause();
     this.voice = false;
     this.shown = 0;

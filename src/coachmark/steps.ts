@@ -1,6 +1,6 @@
 // Configuração das 9 etapas do onboarding. Figma HYM49734BUPEwZfnNLLDY4, seção
-// 2350:2826 (frames 2350:2871 … 2350:51560). Medidas sempre relativas: tooltip → alvo,
-// Nexo → tooltip.
+// 2350:2826 (frames 2350:2871 … 2483:6244) e a última etapa na Home (2631:3475). Medidas
+// sempre relativas: tooltip → alvo, Nexo → tooltip.
 //
 // O texto de cada tooltip vem do manifesto da voz gravada (src/voice/voiceManifest.json,
 // gerado por nexo-voice/build_voices.py): tela e marcações de tempo usam a MESMA divisão
@@ -15,7 +15,6 @@
 import type { Placement } from './placement';
 import type { Route } from '../app/router';
 import { VOICES } from '../voice/voice';
-import { asset } from '../utils/asset';
 import { appState } from '../app/state';
 
 export type { Route } from '../app/router';
@@ -56,11 +55,8 @@ export type Step = {
   /** Texto do tooltip (= texto do manifesto, sem título; uma frase na maioria). */
   text: string;
   tooltip: {
-    /**
-     * 'text' | 'preview' (demo do cursor) | 'image' |
-     * 'loop' (vídeo mudo em loop, sem controles, que começa quando o tooltip termina de entrar).
-     */
-    kind: 'text' | 'preview' | 'image' | 'loop';
+    /** 'text' | 'preview' (demo do cursor) | 'image'. */
+    kind: 'text' | 'preview' | 'image';
     placement: 'right' | 'left' | 'top' | 'bottom';
     /**
      * Posição do tooltip medida no Figma, relativa ao alvo:
@@ -72,11 +68,6 @@ export type Step = {
     media?: {
       poster: string;
       alt: string;
-      /**
-       * Vídeo mudo em loop ('loop'): fontes em ordem de preferência (WebM primeiro, MP4
-       * de alternativa). A capa (`poster`) fica se falhar.
-       */
-      sources?: { src: string; type: string }[];
     };
   };
   nexo: {
@@ -88,18 +79,17 @@ export type Step = {
     offset: { x: number; y: number };
     facing: 'left' | 'right';
     gesture: Gesture;
-    /**
-     * A mídia do tooltip já mostra o Nexo: ao entrar na etapa, o Nexo 3D voa para dentro
-     * dela e fica fora de cena (sem render) até sair da etapa. O offset continua valendo
-     * para o layout do tooltip.
-     */
-    intoMedia?: boolean;
   };
   /**
    * Efeitos de ter passado por esta etapa, valendo da etapa seguinte em diante.
    * Voltar para esta etapa (ou antes) desfaz o efeito.
    */
   completes?: { favorite?: string };
+  /**
+   * Efeitos que valem a partir desta etapa (inclusive). Voltar para antes dela desfaz.
+   * `wazMessage`: a mensagem do Waz (e a bolinha de não lida) na linha dele na Home.
+   */
+  shows?: { wazMessage?: boolean };
 };
 
 const step = (s: Omit<Step, 'text'>): Step => {
@@ -210,45 +200,41 @@ export const STEPS: Step[] = [
     nexo: { offset: { x: 128.3, y: -36.7 }, facing: 'left', gesture: 'point' },
   }),
   step({
-    // 2350:51560 — avatar do Waz 2350:51731 (16,222 32×32) + badge; tooltip com imagem 2483:6455 (81,90 378×398); Nexo (416,142).
+    // Figma 2631:3475 (1920×1080) — alvo: linha do Waz em "Seu time" 2631:3541 (508,325 832×96,
+    // card branco com a mensagem); tooltip 2631:3557 (962,444 378×~201, texto em 4 linhas):
+    // abaixo do card, alinhado à direita (454 = 962 − 508; 23 = 444 − 421); Nexo 2631:3555:
+    // corpo em (1500,3; 521,3), 160,3 px à direita do tooltip e 23,4 px acima do centro dele.
     id: 'waz',
-    route: '/seu-negocio',
-    target: '[data-coach="nav-waz"]',
+    route: '/home',
+    target: '[data-coach="member-waz"]',
     highlight: 'none',
     advanceOn: 'next',
     voice: 'step-09-waz',
-    tooltip: {
-      kind: 'loop',
-      placement: 'right',
-      offset: { x: 33, y: -132 },
-      media: {
-        poster: asset('video/waz-nexo-poster.jpg'),
-        alt: 'Kauê e o Waz',
-        sources: [
-          { src: asset('video/waz-nexo.webm'), type: 'video/webm' },
-          { src: asset('video/waz-nexo.mp4'), type: 'video/mp4' },
-        ],
-      },
-    },
-    // O vídeo já mostra o Nexo: o 3D entra nele (senão pareceriam dois).
-    nexo: { offset: { x: 152.3, y: -62.7 }, facing: 'left', gesture: 'wave', intoMedia: true },
+    tooltip: { kind: 'text', placement: 'bottom', offset: { x: 454, y: 23 } },
+    nexo: { offset: { x: 160.3, y: -23.4 }, facing: 'left', gesture: 'wave' },
+    // A Home mostra a mensagem do Waz a partir desta etapa (e ela fica depois do fim).
+    shows: { wazMessage: true },
   }),
 ];
 
-export type FlowState = { favorites: Set<string> };
+export type FlowState = { favorites: Set<string>; wazMessage: boolean };
 
 /** Todos os favoritos que o fluxo controla (os demais são do usuário e não mudam). */
 export const FLOW_FAVORITES: string[] = STEPS.flatMap((s) =>
   s.completes?.favorite ? [s.completes.favorite] : [],
 );
 
-/** Estado do fluxo ao ESTAR na etapa `index`: efeitos de todas as etapas anteriores. */
+/**
+ * Estado do fluxo ao ESTAR na etapa `index`: efeitos (`completes`) de todas as etapas
+ * anteriores e o que as etapas até ela mostram (`shows`).
+ */
 export function flowStateAt(index: number): FlowState {
   const favorites = new Set<string>();
   STEPS.slice(0, Math.max(index, 0)).forEach((s) => {
     if (s.completes?.favorite) favorites.add(s.completes.favorite);
   });
-  return { favorites };
+  const wazMessage = STEPS.slice(0, Math.max(index, 0) + 1).some((s) => s.shows?.wazMessage);
+  return { favorites, wazMessage };
 }
 
 /** Distância entre a base do Nexo e o topo do tooltip na posição de fallback "top". */

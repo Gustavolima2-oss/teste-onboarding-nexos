@@ -1,7 +1,8 @@
 // Prévia animada do tooltip "Conversas" (Figma 2350:46910, mídia 378×210):
-// o cursor entra pela lateral, para sobre o ícone de fixar, o mini tooltip
-// "Fixar no menu" aparece, o cursor clica (escala 0,9 → 1) e o ícone vira
-// "fixado". Dura ~2,5 s e repete a cada 6 s.
+// um cursor de seta (preto com contorno branco, visível sobre a imagem) entra pela
+// lateral, para sobre o ícone de fixar, o mini tooltip "Fixar no menu" aparece, o cursor
+// clica (escala 0,9 → 1, com uma onda circular saindo do ponto) e o ícone vira "fixado".
+// Dura ~2,5 s e repete a cada ~4 s enquanto a etapa estiver aberta.
 
 import { gsap } from 'gsap';
 import { prefersReducedMotion } from '../utils/reducedMotion';
@@ -15,11 +16,16 @@ export const PREVIEW = {
   pin: { x: 271.43, y: 44.27, size: 13 },
   /** Mini tooltip "Fixar no menu" (2350:46978). */
   tip: { x: 241, y: 12.84 },
-  /** Cursor (2350:46972): posição final do canto superior esquerdo do SVG (16×17). */
-  cursor: { x: 276.2, y: 51.05, fromX: 392, fromY: 150 },
+  /**
+   * Cursor de seta (20×27): canto superior esquerdo do SVG na posição final — a ponta
+   * (1,5; 1,5) cai no centro do ícone de fixar (277,9; 50,8).
+   */
+  cursor: { x: 276.4, y: 49.3, w: 20, h: 27, fromX: 392, fromY: 150 },
+  /** Onda do clique: círculo de 28 px centrado no ícone. */
+  ripple: { size: 28 },
   /** Ciclo (s). */
   duration: 2.5,
-  repeatEvery: 6,
+  repeatEvery: 4,
 };
 
 export function previewMarkup(): string {
@@ -30,7 +36,8 @@ export function previewMarkup(): string {
         style="left:${p.card.x}px;top:${p.card.y}px;width:${p.card.w}px;height:${p.card.h}px" />
       <span class="coach-preview-pin" style="left:${p.pin.x}px;top:${p.pin.y}px"></span>
       <span class="coach-preview-tip" style="left:${p.tip.x}px;top:${p.tip.y}px">Fixar no menu</span>
-      <img class="coach-preview-cursor" src="${asset('images/onboarding/cursor.svg')}" alt="" width="16" height="17"
+      <span class="coach-preview-ripple" style="left:${p.pin.x + p.pin.size / 2 - p.ripple.size / 2}px;top:${p.pin.y + p.pin.size / 2 - p.ripple.size / 2}px;width:${p.ripple.size}px;height:${p.ripple.size}px"></span>
+      <img class="coach-preview-cursor" src="${asset('images/onboarding/cursor-arrow.svg')}" alt="" width="${p.cursor.w}" height="${p.cursor.h}"
         style="left:0;top:0" />
     </div>`;
 }
@@ -40,11 +47,13 @@ export class PreviewDemo {
   private readonly pin: HTMLElement | null;
   private readonly tip: HTMLElement | null;
   private readonly cursor: HTMLElement | null;
+  private readonly ripple: HTMLElement | null;
 
   constructor(root: HTMLElement) {
     this.pin = root.querySelector('.coach-preview-pin');
     this.tip = root.querySelector('.coach-preview-tip');
     this.cursor = root.querySelector('.coach-preview-cursor');
+    this.ripple = root.querySelector('.coach-preview-ripple');
     this.reset();
   }
 
@@ -53,11 +62,11 @@ export class PreviewDemo {
   }
 
   start(): void {
-    const { pin, tip, cursor } = this;
-    if (!pin || !tip || !cursor || this.tl) return;
+    const { pin, tip, cursor, ripple } = this;
+    if (!pin || !tip || !cursor || !ripple || this.tl) return;
     const c = PREVIEW.cursor;
     if (prefersReducedMotion()) {
-      // Sem movimento: mostra o estado final (cursor sobre o ícone, dica visível, fixado).
+      // Sem movimento: estado final parado (cursor visível sobre o ícone, dica, fixado).
       gsap.set(cursor, { x: c.x, y: c.y, opacity: 1 });
       gsap.set(tip, { opacity: 1, scale: 1 });
       pin.classList.add('is-pinned');
@@ -76,10 +85,16 @@ export class PreviewDemo {
       { opacity: 1, scale: 1, duration: 0.2, ease: 'power2.out' },
       '>-0.05',
     );
-    tl.to(cursor, { scale: 0.9, duration: 0.08, ease: 'power1.in' }, '+=0.25');
+    // Para um instante sobre o ícone e clica: 0,9 → 1, com a onda saindo do ponto.
+    tl.to(cursor, { scale: 0.9, duration: 0.08, ease: 'power1.in' }, '+=0.35');
     tl.call(() => pin.classList.add('is-pinned'));
-    tl.to(cursor, { scale: 1, duration: 0.12, ease: 'power1.out' });
-    tl.to(tip, { opacity: 0, duration: 0.2, ease: 'power1.in' }, '+=0.45');
+    tl.fromTo(
+      ripple,
+      { opacity: 0.9, scale: 0.3 },
+      { opacity: 0, scale: 1.6, duration: 0.5, ease: 'power2.out' },
+    );
+    tl.to(cursor, { scale: 1, duration: 0.12, ease: 'power1.out' }, '<');
+    tl.to(tip, { opacity: 0, duration: 0.2, ease: 'power1.in' }, '+=0.35');
     tl.to(cursor, { opacity: 0, duration: 0.25, ease: 'power1.in' }, '<');
     this.tl = tl;
   }
@@ -95,16 +110,18 @@ export class PreviewDemo {
   }
 
   private reset(): void {
-    const { pin, tip, cursor } = this;
-    if (!pin || !tip || !cursor) return;
+    const { pin, tip, cursor, ripple } = this;
+    if (!pin || !tip || !cursor || !ripple) return;
     pin.classList.remove('is-pinned');
+    gsap.set(ripple, { opacity: 0, scale: 0.3 });
     gsap.set(tip, { opacity: 0, scale: 0.9, transformOrigin: '50% 100%' });
     gsap.set(cursor, {
       x: PREVIEW.cursor.fromX,
       y: PREVIEW.cursor.fromY,
       opacity: 0,
       scale: 1,
-      transformOrigin: '30% 10%',
+      // O clique encolhe a partir da ponta da seta (1,5; 1,5 de 20×27).
+      transformOrigin: '7.5% 5.5%',
     });
   }
 }

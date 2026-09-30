@@ -15,6 +15,8 @@
   --coach-dot-on: #fdfdfd;
   /* Palavra ainda não falada (2483:5619): branco a 30%. */
   --coach-word-pending: rgba(255, 255, 255, 0.3);
+  /* Destaque do pin da etapa 3: laranja forte, contrasta com o card branco e o pin azul. */
+  --coach-attention: #ff6a1f;
 }
 
 .coach-overlay {
@@ -121,8 +123,7 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
 
 /* Com mídia (prévia, imagem, vídeo em loop) no topo: ela encosta nas bordas, só pb 24. */
 .coach-tooltip[data-kind='preview'],
-.coach-tooltip[data-kind='image'],
-.coach-tooltip[data-kind='loop'] {
+.coach-tooltip[data-kind='image'] {
   padding-top: 0;
 }
 
@@ -271,12 +272,26 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   width: 89px;
 }
 
-.coach-next:hover {
+.coach-next:hover:not(:disabled) {
   background: #ebeded;
+}
+
+/* Bloqueado enquanto o loader (anel) enche: a pílula do Figma (2631:3572) esmaecida, sem
+   hover. Ao completar, acende em 200 ms. O anel fica fora do botão, sempre nítido. */
+.coach-next {
+  transition:
+    opacity 200ms var(--ease-out),
+    background-color 150ms var(--ease-out);
 }
 
 .coach-next:disabled {
   cursor: default;
+  opacity: 0.5;
+}
+
+/* O tooltip recebe o foco enquanto o "Próximo" está bloqueado; sem anel próprio. */
+.coach-tooltip:focus {
+  outline: none;
 }
 
 /* Anel de progresso da fala ("Subtract", 2483:5698): 3,5 px colado à pílula,
@@ -350,9 +365,8 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   display: none;
 }
 
-/* Capa e vídeo em loop (etapa 9): cobrem a mídia inteira. */
-.coach-poster,
-.coach-loop {
+/* Capa (kind 'image'): cobre a mídia inteira. */
+.coach-poster {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -397,9 +411,19 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   white-space: nowrap;
 }
 
+/* Cursor de seta (preto, contorno branco) com sombra leve para destacar da imagem. */
 .coach-preview-cursor {
-  width: 16px;
-  height: 17px;
+  width: 20px;
+  height: 27px;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.35));
+}
+
+/* Onda do clique, saindo do centro do ícone de fixar. */
+.coach-preview-ripple {
+  border: 2px solid var(--accent-blue);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* ---------- Elemento de ação (etapa 3: o pin do card Conversas) ---------- */
@@ -421,42 +445,65 @@ html:not(.is-coach-busy) .is-coach-action:hover {
   outline-offset: 3px;
 }
 
-/* Pulso: anel azul expandindo e sumindo a cada ~1,5 s; para no hover. */
+/* Destaque do pin (etapa 3), da entrada do tooltip até o clique: 1,5× maior, com um
+   salto curto e um anel luminoso laranja (contrasta com o card branco e com o azul do pin)
+   que expande e some a cada 1,2 s. */
+.is-coach-action.is-pulsing {
+  transform: scale(1.5);
+  animation: coach-pin-hop 1.2s ease-in-out infinite;
+}
+
 .is-coach-action.is-pulsing::after {
   content: '';
   position: absolute;
-  inset: -2px;
-  border: 2px solid var(--accent-blue);
+  inset: -3px;
+  border: 2px solid var(--coach-attention);
   border-radius: 50%;
+  box-shadow:
+    0 0 8px 1px var(--coach-attention),
+    inset 0 0 4px var(--coach-attention);
   pointer-events: none;
-  animation: coach-action-pulse 1.5s ease-out infinite;
+  animation: coach-pin-ring 1.2s ease-out infinite;
 }
 
-.is-coach-action.is-pulsing:hover::after {
-  animation: none;
-  opacity: 0;
-}
-
-@keyframes coach-action-pulse {
+@keyframes coach-pin-ring {
   0% {
-    opacity: 0.8;
-    transform: scale(0.9);
+    opacity: 0.95;
+    transform: scale(0.85);
   }
-  70%,
+  75%,
   100% {
     opacity: 0;
-    transform: scale(1.9);
+    transform: scale(2.1);
+  }
+}
+
+@keyframes coach-pin-hop {
+  0%,
+  30%,
+  100% {
+    transform: scale(1.5) translateY(0);
+  }
+  12% {
+    transform: scale(1.5) translateY(-3px);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Anel parado, mas visível; sem salto. */
+  .is-coach-action.is-pulsing {
+    animation: none;
+  }
+
   .is-coach-action.is-pulsing::after {
     animation: none;
-    opacity: 0.6;
+    opacity: 0.9;
+    transform: scale(1.25);
   }
 }
 
-/* "Fixar no menu" no hover/foco do pin, no estilo do balão da prévia (2482:24936). */
+/* "Fixar no menu" sempre visível acima do pin enquanto ele está em destaque, no estilo do
+   balão da prévia (2482:24936), com uma seta apontando para o pin. */
 .coach-action-tip {
   position: fixed;
   z-index: var(--z-tooltip);
@@ -472,6 +519,28 @@ html:not(.is-coach-busy) .is-coach-action:hover {
   letter-spacing: -0.18px;
   white-space: nowrap;
   pointer-events: none;
+}
+
+/* Seta (borda + preenchimento) a 18 px da borda direita, sobre o centro do pin. */
+.coach-action-tip::before,
+.coach-action-tip::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  width: 0;
+  height: 0;
+  border: 6px solid transparent;
+  border-bottom: 0;
+}
+
+.coach-action-tip::before {
+  top: 100%;
+  border-top: 7px solid #333b4d;
+}
+
+.coach-action-tip::after {
+  top: calc(100% - 1px);
+  border-top: 7px solid #13161d;
 }
 
 .coach-action-tip[hidden] {

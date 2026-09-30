@@ -30,6 +30,11 @@ export function untrackInputModality(): void {
   delete document.documentElement.dataset.input;
 }
 
+/** A última interação foi pelo teclado (vale enquanto o rastreio está ligado). */
+export function isKeyboardModality(): boolean {
+  return lastWasKeyboard;
+}
+
 export function focusWithModality(el: HTMLElement): void {
   // focus() num elemento que já tem foco não atualiza o :focus-visible (ex.: o tooltip
   // foi ocultado e reexibido na mesma tarefa, antes de o navegador tirar o foco).

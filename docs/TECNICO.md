@@ -16,15 +16,15 @@ Complemento do [README](../README.md) para quem vai manter ou integrar o código
 
 ## Scripts
 
-| Comando                                                       | O que faz                                                                                                         |
-| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `npm run dev` / `build` / `preview`                           | Vite. O build separa o three.js num chunk carregado depois da home.                                               |
-| `npm run lint`                                                | ESLint (TypeScript `strict`, sem `!`).                                                                            |
-| `npm test`                                                    | Suíte do onboarding, com 93 verificações (ver abaixo). Precisa do dev server em `:5199` (`npx vite --port 5199`). |
-| `npm run checkpoint`                                          | Prints das etapas em 1440×900 e 1920×1080 (DPR 2), mais `posicoes.json`.                                          |
-| `npm run record -- <flow\|talk\|look\|gestures> <saida.webm>` | Vídeos de verificação a 60 fps.                                                                                   |
-| `npm run optimize:glb`                                        | Gera `public/models/nexo.glb` a partir de `assets-src/nexo-3d.glb` (fora do repositório).                         |
-| `npm run measure:png`                                         | Mede a caixa visível e o corpo do PNG do Nexo no Figma e grava `scripts/png-bbox.json`.                           |
+| Comando                                                       | O que faz                                                                                                          |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `npm run dev` / `build` / `preview`                           | Vite. O build separa o three.js num chunk carregado depois da home.                                                |
+| `npm run lint`                                                | ESLint (TypeScript `strict`, sem `!`).                                                                             |
+| `npm test`                                                    | Suíte do onboarding, com 149 verificações (ver abaixo). Precisa do dev server em `:5199` (`npx vite --port 5199`). |
+| `npm run checkpoint`                                          | Prints das etapas em 1440×900 e 1920×1080 (DPR 2), mais `posicoes.json`.                                           |
+| `npm run record -- <flow\|talk\|look\|gestures> <saida.webm>` | Vídeos de verificação a 60 fps.                                                                                    |
+| `npm run optimize:glb`                                        | Gera `public/models/nexo.glb` a partir de `assets-src/nexo-3d.glb` (fora do repositório).                          |
+| `npm run measure:png`                                         | Mede a caixa visível e o corpo do PNG do Nexo no Figma e grava `scripts/png-bbox.json`.                            |
 
 O `npm test` abre o Chrome instalado via `playwright-core`. Ele cobre:
 
@@ -34,8 +34,9 @@ O `npm test` abre o Chrome instalado via `playwright-core`. Ele cobre:
 - o tooltip nunca aparecendo durante o voo, e o FPS no voo;
 - fim do tour sem resíduos (overlay, destaques, z-index, trava de rolagem, Nexo destruído, listeners de teclado), persistência, Tab preso no tooltip, `:focus-visible` e o Esc ignorado em cada uma das 9 etapas;
 - movimento reduzido e fallback sem WebGL;
-- prévia animada e vídeo;
-- voz: começa sem voz (texto branco, timer de max(duração × 2,5; 6 s) avançando sozinho); o alto-falante liga a voz (áudio certo, grifo, anel reiniciado) e o avanço passa a ser em duração + 400 ms, com a etapa seguinte já falando; pausa e retomada no início da palavra; avançar pausado volta ao modo sem voz; "Próximo" interrompe a fala; `play()` rejeitado cai no modo sem voz; boca só com palavra ativa;
+- etapa 3: pin em destaque (1,5×, anel pulsando, salto, balão com seta) até o clique, e o cursor de seta na prévia;
+- voz por padrão: "Próximo" desativado até o loader completar, em todas as etapas e nos dois modos; com voz, avanço em duração + 400 ms (exceto na última etapa, que só ativa o "Finalizar"); pausar leva ao modo texto (texto branco, loader continuando no ritmo de leitura, sem avanço); as seguintes ficam no modo texto até religar a voz; autoplay bloqueado cai no modo texto sem erro e a voz volta depois do primeiro clique; boca só com palavra ativa;
+- última etapa na Home (linha do Waz com a mensagem, geometria do Figma a 1920×1080) e a Home limpa com a mensagem depois do "Finalizar";
 - memória liberada no `destroy()`.
 
 ## Estrutura
@@ -70,7 +71,6 @@ public/
   models/nexo.glb         1,47 MB, 86.762 triângulos, textura WebP 2048² q85
   fallback/nexo.png       PNG para quando não há WebGL
   images/…                assets do Figma (≤ 1024 px)
-  video/seu-negocio.webm  vídeo de placeholder (etapa 6)
 scripts/                  pipeline do GLB, medições, testes, prints e gravação
 docs/checkpoints/         prints e vídeos de conferência (gerados; fora do repositório)
 assets-src/               originais: nexo-3d.glb (fora do repositório) e o PNG de referência do rosto
@@ -83,7 +83,7 @@ assets-src/               originais: nexo-3d.glb (fora do repositório) e o PNG 
 - **Alvo clicável:** com `advanceOn: 'target'` (etapas 1, 4 e 5, cujos alvos são itens de navegação), clicar no alvo destacado avança exatamente como o "Próximo", com `cursor: pointer` e hover; durante a transição, o clique é ignorado. Com `advanceOn: 'action'` (etapa 3), a etapa só avança pela ação (`action.selector`: o pin do card), que entra no ciclo do Tab e recebe o foco inicial; → e Enter fora dele não avançam. Nos outros alvos, um link não navega durante o tour.
 - "Próximo" (→ ou Enter) avança e "Voltar" (←) retorna, com a mesma coreografia invertida: o tooltip sai, o Nexo voa de volta, o destaque migra e o tooltip anterior entra junto com o gesto. Voltar entre telas (6 → 5, 2 → 1) refaz a troca de tela no sentido inverso, com a mesma tela limpa.
 - O estado do fluxo não é acumulado: `flowStateAt(i)` o **deriva** dos `completes` das etapas anteriores, e `applyFlowState(i)` o aplica a cada troca (e no `?step=N`). Por isso todo estado é reversível: ao voltar da 4 para a 3, "Conversas" sai dos favoritos (com fade na sidebar).
-- Hoje o único efeito é `completes: { favorite: 'conversas' }` na etapa 3. A prévia (etapa 3) e o vídeo (etapa 6) vivem dentro do tooltip e são refeitos a cada exibição.
+- Hoje os efeitos são `completes: { favorite: 'conversas' }` na etapa 3 e `shows: { wazMessage: true }` na última (a mensagem do Waz na Home, que fica depois do fim). A prévia (etapa 3) vive dentro do tooltip e é refeita a cada exibição.
 - **Limite conhecido:** o fluxo só controla os favoritos declarados em `completes`. Se o usuário fixar ou desafixar "Conversas" à mão durante o tour, voltar ou avançar sobrescreve essa escolha com o estado da etapa.
 
 ## Sequência
@@ -108,9 +108,9 @@ assets-src/               originais: nexo-3d.glb (fora do repositório) e o PNG 
 - **Um dono por eixo:** durante o voo, posição, escala, banking (Z) e yaw pertencem ao arco; durante o gesto, o olhar fica congelado e a flutuação desligada. A flutuação (±3 px em 3 s, sem rotação) e o olhar voltam quando o gesto termina. Nenhum movimento usa `back`/`elastic`.
 - **Entre telas:** a tela seguinte é montada numa sonda invisível para medir o destino antes da decolagem. A troca real (fade out 200 ms, montagem, fade in 250 ms) acontece por baixo do voo.
 - **Voltar:** a mesma troca, no sentido inverso (ver "Navegação nos dois sentidos").
-- **Timer e fala:** começam quando o tooltip termina de entrar. Sem voz (padrão), o anel é um timer de leitura (duração × 2,5, mínimo 6 s) e o fluxo avança no fim; com voz, o anel segue o áudio e o fluxo avança 400 ms depois do fim. Toda troca (Próximo, Voltar, alvo, avanço automático, Finalizar) para o áudio e zera grifo, anel e boca antes de qualquer animação. O áudio da etapa seguinte é pré-carregado nos dois modos.
-- **Etapas especiais:** na 3, a demonstração do cursor começa depois do tooltip. Nas 6 e 7, o Play do vídeo pausa a fala e o Nexo passa a `listen`.
-- **Fim:** no "Próximo" da etapa 7, o tooltip sai, o Nexo faz `bye` e voa para fora (900 ms), o overlay some e o foco vai para a página. O "Finalizar" é a única saída: o Esc é ignorado durante o tour e não há botão de fechar. No fim, o Nexo é destruído (`destroy()`) e nada do tour fica na página.
+- **Fala e timer:** começam quando o tooltip termina de entrar. Com voz (padrão), o anel segue o áudio e o fluxo avança 400 ms depois do fim (na última etapa, só ativa o "Finalizar"). No modo texto (pausa do usuário ou autoplay bloqueado), o anel é um timer de leitura (duração × 2,5, mínimo 6 s) e, ao completar, só ativa o "Próximo". Nos dois modos, o "Próximo" e o clique no alvo ficam bloqueados até o anel completar. Toda troca (Próximo, Voltar, alvo, avanço automático, Finalizar) para o áudio e zera grifo, anel e boca antes de qualquer animação. O áudio da etapa seguinte é pré-carregado nos dois modos.
+- **Etapas especiais:** na 3, a demonstração do cursor começa depois do tooltip e o pin fica em destaque até o clique. A última acontece na Home: a troca de tela da 8 para ela usa a transição entre telas, e a mensagem do Waz entra antes do destaque.
+- **Fim:** no "Finalizar" da última etapa (na Home), o tooltip sai, o Nexo faz `bye` e voa para fora (900 ms), o overlay some e o foco vai para a página (sem anel, a não ser com teclado). A Home fica com a mensagem do Waz. O "Finalizar" é a única saída: o Esc é ignorado durante o tour e não há botão de fechar. No fim, o Nexo é destruído (`destroy()`) e nada do tour fica na página.
 
 ## Render e modelo
 
@@ -137,14 +137,14 @@ Os valores finais são constantes comentadas em [nexoMaterial.ts](../src/nexo/ne
   - `think`: inclina 8° de lado e olha para baixo.
 - **Rosto** ([NexoFace.ts](../src/nexo/NexoFace.ts)): um canvas de 1024×768 vira um `DecalGeometry` sobre a tela, detectada pelos texels escuros da textura, e cobre o rosto pintado. O visual segue o PNG de referência: bezel roxo com cantos bem arredondados, fundo marrom-escuro translúcido, scanlines finas, reflexo especular no topo e pixels laranja de cantos arredondados com glow. Os olhos são retângulos verticais e a boca é estreita. As células saem quadradas porque a altura em px é corrigida pelo aspecto da caixa do decal (`setBoxAspect`).
   - A fala são 5 barras em degraus que trocam a cada 70–120 ms, com pulsos nos olhos.
-  - Só com a voz ligada e uma palavra ativa, as barras seguem o volume (RMS do `AnalyserNode`, 5 degraus; 3 com movimento reduzido). Entre palavras, na pausa, no fim e em todo o modo sem voz, a boca fica no sorriso, trocando no mesmo quadro.
+  - Só com a voz ligada e uma palavra ativa, as barras seguem o volume (RMS do `AnalyserNode`, 5 degraus; 3 com movimento reduzido). Entre palavras, na pausa, no fim e em todo o modo texto, a boca fica no sorriso, trocando no mesmo quadro.
 - **Olhar** ([NexoLook.ts](../src/nexo/NexoLook.ts)): o yaw e o pitch são calculados **relativos à direção do tooltip**, limitados a ±28° e ±16°, com constante de tempo de 120 ms. Os olhos chegam antes do corpo. Com o mouse parado por 2 s, o olhar volta ao tooltip em ~600 ms.
-- **Voz:** MP3 gravados por etapa (ver o README, seção "Voz do Nexo"). Desligada por padrão; o alto-falante liga e pausa (Espaço também). Pausar desliga: texto todo branco, anel congelado e sem avanço; ligar de novo recomeça do zero. Aba em segundo plano pausa fala e timer; ao voltar, retoma (com voz, do início da palavra).
+- **Voz:** MP3 gravados por etapa (ver o README, seção "Voz do Nexo"). Ligada por padrão; o ícone pausa e religa (Espaço também). Pausar leva ao modo texto: texto todo branco, anel continuando no ritmo de leitura e sem avanço; religar recomeça a fala do zero. Aba em segundo plano pausa fala e timer; ao voltar, retoma (com voz, do início da palavra).
 
 ## Acessibilidade, movimento reduzido e performance
 
-- **Tooltip:** `role="dialog"`, `aria-modal`, `aria-labelledby`/`aria-describedby` e `aria-live="polite"` no título. O foco vai para o "Próximo" ao abrir (o botão é liberado antes) e o Tab circula dentro do tooltip ("Voltar", áudio e "Próximo"). O anel de foco só aparece em `:focus-visible`. O canvas tem `aria-hidden`.
-  - → e Enter avançam; ← volta (não faz nada na etapa 1). Com o foco em "Voltar" ou no áudio, Enter e Espaço ativam o botão focado. Dentro do vídeo, as setas ficam com o player.
+- **Tooltip:** `role="dialog"`, `aria-modal`, `aria-labelledby`/`aria-describedby` e `aria-live="polite"` no título. O foco vai para o tooltip ao abrir e passa para o "Próximo" quando o loader completa e o botão é liberado e o Tab circula dentro do tooltip ("Voltar", áudio e "Próximo"). O anel de foco só aparece em `:focus-visible`. O canvas tem `aria-hidden`.
+  - → e Enter avançam; ← volta (não faz nada na etapa 1). → e Enter só avançam com o "Próximo" liberado. Com o foco em "Voltar" ou no áudio, Enter e Espaço ativam o botão focado.
   - Durante o voo, "Voltar" e "Próximo" ficam desabilitados.
   - Rodapé (2414:5158): "Voltar" 73×40 sem fundo, bolinhas centralizadas e "Próximo". Na etapa 1 o "Voltar" fica invisível e desabilitado, mas ocupa o lugar: o rodapé não muda de altura e as bolinhas não andam.
 - **`prefers-reduced-motion`:**

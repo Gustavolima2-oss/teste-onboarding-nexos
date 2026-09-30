@@ -23,6 +23,7 @@ import type { Point } from './nexo/NexoGuide';
 import { VoicePlayer, installAudioUnlock } from './voice/voice';
 import { NexoDebug } from './debug/NexoDebug';
 import { prefersReducedMotion } from './utils/reducedMotion';
+import { isKeyboardModality } from './utils/inputModality';
 
 // Orquestra o onboarding: 7 coach marks em 3 telas, com o Nexo guiando.
 // ?step=N abre na etapa N. Dev: ?onboarding=reset reinicia; ?debug liga a tecla D;
@@ -125,17 +126,16 @@ const targetCenter = (l: StepLayout): Point => ({
   x: l.target.x + l.target.w / 2,
   y: l.target.y + l.target.h / 2,
 });
-/** Onde o Nexo fica na etapa: a âncora dele, ou o centro da mídia em que entrou (intoMedia). */
-const mediaCenter = (l: StepLayout): Point | null =>
-  l.media ? { x: l.media.x + l.media.w / 2, y: l.media.y + l.media.h / 2 } : null;
 
 /**
  * Aplica o estado do fluxo da etapa `index` (derivado de steps.ts): serve para os
- * dois sentidos e para ?step=N. Só mexe nos favoritos que o fluxo controla.
+ * dois sentidos e para ?step=N. Só mexe nos favoritos que o fluxo controla e na
+ * mensagem do Waz (que chega 'new': a Home anima a entrada dela).
  */
 const applyFlowState = (index: number) => {
-  const { favorites } = flowStateAt(index);
+  const { favorites, wazMessage } = flowStateAt(index);
   FLOW_FAVORITES.forEach((id) => appState.setFavorite(id, favorites.has(id)));
+  appState.setWazMessage(wazMessage ? (appState.wazMessage ?? 'new') : null);
 };
 
 const readDone = (): boolean => {
@@ -226,10 +226,12 @@ async function start(): Promise<void> {
   let current = initial;
   let closing = false;
   /**
-   * Voz ligada nesta sessão. O tour começa SEM voz (texto branco + timer de leitura); o
-   * clique no alto-falante liga. Avançar com a voz pausada desliga para as seguintes.
+   * O usuário pausou a voz: o tour segue no modo texto (texto branco, loader no ritmo de
+   * leitura, sem avanço automático) até ele clicar no alto-falante de novo. O tour começa
+   * COM voz; se o navegador bloquear o áudio (autoplay), só aquela etapa fica no modo texto.
+   * Dev: ?voice=off começa no modo texto.
    */
-  let voiceOn = false;
+  let textMode = import.meta.env.DEV && params.get('voice') === 'off';
   /** Avanço automático agendado (fim da fala + 400 ms). */
   let autoAdvance: gsap.core.Tween | null = null;
   const cancelAutoAdvance = () => {
@@ -252,18 +254,16 @@ async function start(): Promise<void> {
       const step = STEPS[current];
       if (busy || closing || !step || step.voice !== id) return;
       cancelAutoAdvance();
-      // Etapa de ação: nunca avança sozinha; no fim da fala, o gatilho começa a pulsar.
-      if (step.advanceOn === 'action') {
-        coach.setActionPulse(true);
-        return;
-      }
-      // Com voz: fim do áudio + 400 ms. Sem voz: o timer já é a espera.
-      autoAdvance = gsap.delayedCall(spoken ? AUTO_ADVANCE_DELAY_S : 0, () => {
+      // Loader completo: o "Próximo" (e o clique no alvo) é liberado.
+      coach.setNextLocked(false);
+      // Avanço automático só no modo com voz (fim do áudio + 400 ms). Nunca no modo texto,
+      // na etapa de ação (avança pelo pin) nem na última (o "Finalizar" só é ativado).
+      if (!spoken || step.advanceOn === 'action' || current >= STEPS.length - 1) return;
+      autoAdvance = gsap.delayedCall(AUTO_ADVANCE_DELAY_S, () => {
         autoAdvance = null;
         if (busy || closing || STEPS[current]?.voice !== id) return;
-        // Mesma transição do clique em "Próximo" (na última etapa, encerra o tour).
-        if (current >= STEPS.length - 1) void finish();
-        else void go(current, current + 1);
+        // Mesma transição do clique em "Próximo".
+        void go(current, current + 1);
       });
     },
   });
@@ -282,11 +282,12 @@ async function start(): Promise<void> {
     onLayout: (layout, reason) => {
       // Resize: reposiciona sem animar (se estiver voando, o voo é concluído no destino novo).
       if (reason !== 'resize') return;
-      nexo.placeAt((nexo.isVanished && mediaCenter(layout)) || center(layout));
+      nexo.placeAt(center(layout));
       nexo.lookAt(tooltipCenter(layout));
     },
     onNext: (index) => {
-      if (busy) return;
+      // Só com o loader completo (o botão e o clique no alvo já respeitam isso).
+      if (busy || coach.isNextLocked) return;
       if (index >= STEPS.length - 1) void finish();
       else void go(index, index + 1);
     },
@@ -300,13 +301,16 @@ async function start(): Promise<void> {
     },
     onVoiceToggle: () => {
       if (busy) return;
-      // Tocando: pausar vale como desligar (texto branco, anel congelado, sem avanço).
-      if (voice.isVoice && voice.state === 'playing') voice.pause();
-      else {
-        // Sem voz, pausada ou terminada: liga a voz e fala a etapa do início, anel do zero.
-        voiceOn = true;
+      if (voice.isVoice && (voice.state === 'playing' || voice.state === 'paused')) {
+        // Falando: pausar leva ao modo texto (texto branco, boca no padrão, loader
+        // continua no ritmo de leitura) nesta etapa e nas seguintes.
+        textMode = true;
+        voice.toText();
+      } else {
+        // Modo texto (ou fala terminada): religa a voz e fala a etapa do início. O
+        // "Próximo" já liberado continua liberado.
+        textMode = false;
         cancelAutoAdvance();
-        coach.setActionPulse(false); // na etapa de ação, volta a pulsar quando a fala acabar
         coach.prepareText(true);
         void voice.enableVoice();
       }
@@ -323,26 +327,18 @@ async function start(): Promise<void> {
     nexo.lookAt(tooltipCenter(layout));
     debug.setStep(step.id);
     busy = false;
-    coach.prepareText(voiceOn);
-    const shown = coach.showTooltip();
-    // O Nexo acabou de entrar na mídia: o vídeo começa junto com o tooltip.
-    if (step.nexo.intoMedia) coach.startLoop();
-    await shown;
+    coach.prepareText(!textMode);
+    await coach.showTooltip();
     if (closing || STEPS[current] !== step) return;
     setState('ready', step.id);
-    if (step.advanceOn === 'action' && !voiceOn) {
-      // Etapa de ação sem voz: sem timer e sem avanço automático; o gatilho pulsa.
-      voice.arm(step.voice);
-      coach.setActionPulse(true);
-    } else {
-      // Timer de leitura (sem voz) ou fala: começa com o tooltip já na tela.
-      void voice.start(step.voice, voiceOn);
-    }
+    // Fala (padrão) ou timer de leitura (modo texto): começa com o tooltip já na tela e
+    // enche o loader; o "Próximo" fica bloqueado até ele completar (onEnd).
+    void voice.start(step.voice, !textMode);
+    // Etapa de ação: o pin ganha o destaque assim que o tooltip entra (até o clique).
+    if (step.advanceOn === 'action') coach.setActionPulse(true);
     const next = STEPS[STEPS.indexOf(step) + 1];
     if (next) voice.preload(next.voice);
     if (step.tooltip.kind === 'preview') coach.startDemo();
-    // Vídeo em loop (etapa 9): começa com o tooltip já na tela.
-    if (step.tooltip.media?.sources) coach.startLoop();
   }
 
   // ---------- ação da etapa (advanceOn 'action') ----------
@@ -427,8 +423,6 @@ async function start(): Promise<void> {
     busy = true;
     current = to;
     setState('transition', step.id);
-    // Pausar vale como desligar: a etapa seguinte entra sem voz.
-    if (voice.isVoice && voice.isPaused) voiceOn = false;
     silence();
     coach.setBusy(true);
     const cross = cur.route !== step.route;
@@ -449,18 +443,8 @@ async function start(): Promise<void> {
       layout = await coach.goTo(to, { highlight: false });
     }
 
-    /**
-     * Voo do Nexo até a etapa: para dentro da mídia (intoMedia: o vídeo já o mostra), de
-     * dentro dela (voltando dessa etapa) ou o voo normal.
-     */
-    const moveNexo = (duration?: number): Promise<void> => {
-      const media = step.nexo.intoMedia ? mediaCenter(layout) : null;
-      if (media) return nexo.vanishInto(media, { duration });
-      const opts = { facing: step.nexo.facing, duration };
-      return nexo.isVanished
-        ? nexo.emergeTo(center(layout), opts)
-        : nexo.flyTo(center(layout), opts);
-    };
+    const moveNexo = (duration?: number): Promise<void> =>
+      nexo.flyTo(center(layout), { facing: step.nexo.facing, duration });
 
     const tl = gsap.timeline();
     transition = tl;
@@ -508,11 +492,12 @@ async function start(): Promise<void> {
     await present(step, coach.layout ?? layout);
   }
 
-  // ---------- fim ("Finalizar" da etapa 9, a única saída) ----------
+  // ---------- fim ("Finalizar" da última etapa, na Home: a única saída) ----------
   /**
-   * Encerra o tour e deixa a página como se ele nunca tivesse rodado: overlay, blur,
-   * destaques e trava de rolagem saem (coach.close), o Nexo é destruído (canvas, GPU,
-   * voz e listeners) e o foco vai para o primeiro elemento interativo da tela.
+   * Encerra o tour: o tooltip sai, o Nexo voa para fora e o overlay some. A Home fica
+   * limpa, só com a mensagem do Waz (Figma 2631:3583): destaques e trava de rolagem saem
+   * (coach.close), o Nexo é destruído (canvas, GPU, voz e listeners) e o foco vai para o
+   * primeiro elemento interativo da tela.
    */
   async function finish(): Promise<void> {
     if (closing) return;
@@ -526,12 +511,16 @@ async function start(): Promise<void> {
     transition = null;
     coach.setBusy(true);
     const hidden = coach.hideTooltip();
-    // Com o Nexo dentro da mídia (etapa 9), sem tchau nem voo de saída: só tooltip e overlay.
-    if (!nexo.isVanished) await nexo.gesture('bye');
+    await nexo.gesture('bye');
     const exited = nexo.exit();
     coach.unhighlight(TARGET_TRANSITION_MS);
     await Promise.all([hidden, coach.dim(0, 0.45, 'power2.inOut'), exited]);
+    // Anel de foco só se a pessoa vinha usando o teclado (lido antes do close, que desliga o
+    // rastreio): com o mouse, a Home fica limpa como no Figma 2631:3583.
+    const keyboard = isKeyboardModality();
     coach.close();
+    // A mensagem do Waz fica na Home depois do fim (já vista: sem animar de novo).
+    if (appState.wazMessage) appState.setWazMessage('shown');
     nexo.destroy();
     debug.destroy();
     uninstallAudioUnlock();
@@ -543,7 +532,7 @@ async function start(): Promise<void> {
     (
       document.querySelector<HTMLElement>(`.screen :is(${focusable})`) ??
       document.querySelector<HTMLElement>(`.sidebar :is(${focusable})`)
-    )?.focus();
+    )?.focus({ focusVisible: keyboard });
   }
 
   // ---------- abertura ----------
@@ -556,12 +545,7 @@ async function start(): Promise<void> {
     () => {
       // Refaz o layout com a silhueta real do modelo (antes valia a caixa do Figma).
       layout = coach.relayout() ?? layout;
-      // Aberta direto numa etapa intoMedia (?step=9): o Nexo já começa dentro da mídia.
-      const media = first.nexo.intoMedia ? mediaCenter(layout) : null;
-      const arrived = media
-        ? nexo.vanishInto(media, { animate: false })
-        : nexo.appearAt(center(layout));
-      void arrived.then(async () => {
+      void nexo.appearAt(center(layout)).then(async () => {
         if (closing) return;
         // Escurecimento, destaque, tooltip e aceno começam juntos.
         void coach.dim(1, OPENING.dimDuration, 'power2.inOut');

@@ -41,6 +41,8 @@ const LAYER_CLASS = 'is-coach-layer';
 /** Alvo perdendo o destaque: continua acima do overlay durante a transição. */
 const LEAVING_CLASS = 'is-coach-leaving';
 const LAYER_LEAVING_CLASS = 'is-coach-layer-leaving';
+/** Distância do centro do pin (etapa 3) à base do balão "Fixar no menu" (px, pin 1,5×). */
+const ACTION_TIP_GAP = 26;
 /** Migração do destaque entre alvos (ms). */
 export const TARGET_TRANSITION_MS = 520;
 /** Entrada do tooltip: fade + translateX −8 → 0 + escala 0,96 → 1. */
@@ -83,8 +85,6 @@ export type StepLayout = {
   nexo: Rect;
   nexoAnchor: { x: number; y: number };
   nexoPlacement: Placement;
-  /** Mídia do topo do tooltip (378×210), em px da viewport; null sem mídia. */
-  media: Rect | null;
 };
 
 /** O ícone mostra a AÇÃO do clique: alto-falante (voz desligada ou pausada) ou pausa (tocando). */
@@ -127,8 +127,11 @@ export class Coachmark {
   private scrollLock: { overflow: string; paddingRight: string } | null = null;
   private opened = false;
   private demo: PreviewDemo | null = null;
-  /** Vídeo em loop do topo do tooltip (kind 'loop'), criado quando o tooltip termina de entrar. */
-  private loopVideo: HTMLVideoElement | null = null;
+  /**
+   * "Próximo" bloqueado até o loader (fala ou timer de leitura) completar. Volta a
+   * bloquear a cada etapa nova (goTo).
+   */
+  private nextLocked = true;
   private voiceState: VoiceButtonState | null = null;
   private busy = false;
   /** Elemento de ação da etapa (advanceOn 'action'), fora do tooltip. */
@@ -155,6 +158,8 @@ export class Coachmark {
     this.tooltip.setAttribute('aria-modal', 'true');
     this.tooltip.setAttribute('aria-describedby', 'coach-say-sr');
     this.tooltip.hidden = true;
+    // Recebe o foco enquanto o "Próximo" está bloqueado (um botão desabilitado não recebe).
+    this.tooltip.tabIndex = -1;
     this.tooltip.innerHTML = `
       <div class="coach-media" hidden></div>
       <div class="coach-head">
@@ -230,7 +235,6 @@ export class Coachmark {
     // outro listener (e sem o comportamento padrão do navegador).
     window.addEventListener('keydown', this.swallowEscape, true);
     window.addEventListener('keyup', this.swallowEscape, true);
-    document.addEventListener('visibilitychange', this.handleVisibility);
     window.addEventListener('resize', this.handleResize);
   }
 
@@ -248,6 +252,7 @@ export class Coachmark {
     if (!els.length) throw new Error(`Coachmark: alvo ${String(step.target)} não encontrado`);
     this.index = index;
     this.targets = els;
+    this.nextLocked = true;
     this.fillContent(step, index);
     await this.ensureVisible(step);
     if (highlight) this.highlight(transitionMs);
@@ -313,8 +318,10 @@ export class Coachmark {
     this.tooltipTween?.kill();
     this.tooltip.hidden = false;
     this.tooltip.classList.add('is-visible');
-    // Etapa de ação: o foco vai para o elemento da ação (Enter/Espaço já o acionam).
-    focusWithModality(this.actionEl ?? this.nextButton);
+    // Etapa de ação: o foco vai para o elemento da ação (Enter/Espaço já o acionam). Com o
+    // "Próximo" ainda bloqueado (loader enchendo), o foco fica no próprio tooltip e passa
+    // para o "Próximo" quando ele é ativado.
+    focusWithModality(this.actionEl ?? (this.nextButton.disabled ? this.tooltip : this.nextButton));
     if (!animate) {
       gsap.set(this.tooltip, { clearProps: 'opacity,transform' });
       return;
@@ -371,9 +378,36 @@ export class Coachmark {
   setBusy(busy: boolean): void {
     this.busy = busy;
     document.documentElement.classList.toggle('is-coach-busy', busy);
-    // Etapa de ação: sem "Próximo" (fica invisível e desabilitado, ocupando o lugar).
-    this.nextButton.disabled = busy || this.isActionStep();
     this.backButton.disabled = busy || this.index <= 0;
+    this.syncNext();
+  }
+
+  /** "Próximo" liberado: o loader (fala ou timer de leitura) completou. */
+  get isNextLocked(): boolean {
+    return this.nextLocked;
+  }
+
+  /**
+   * Bloqueia ou libera o "Próximo" (e o clique no alvo navegável). Ao liberar, o botão
+   * acende com uma transição curta (CSS) e, se o foco estava no tooltip, vai para ele.
+   */
+  setNextLocked(locked: boolean): void {
+    if (locked === this.nextLocked) return;
+    this.nextLocked = locked;
+    this.syncNext();
+    if (!locked && !this.busy && document.activeElement === this.tooltip) {
+      focusWithModality(this.nextButton);
+    }
+  }
+
+  /**
+   * Estado do "Próximo": desabilitado em transição, na etapa de ação (sem "Próximo":
+   * invisível, ocupando o lugar) e enquanto o loader enche.
+   */
+  private syncNext(): void {
+    const off = this.busy || this.isActionStep() || this.nextLocked;
+    this.nextButton.disabled = off;
+    this.nextButton.setAttribute('aria-disabled', String(off));
   }
 
   /**
@@ -424,56 +458,11 @@ export class Coachmark {
     this.demo?.start();
   }
 
-  /**
-   * Mídia em loop (kind 'loop'): chamada quando o tooltip termina de entrar. Cria o
-   * <video autoplay muted loop playsinline> sobre a capa (WebM primeiro, MP4 de
-   * alternativa). Com movimento reduzido, fica só a capa. Não mexe em timer, voz nem avanço.
-   */
-  startLoop(): void {
-    const step = this.opts.steps[this.index];
-    const media = step?.tooltip.media;
-    if (!media?.sources?.length || this.loopVideo || prefersReducedMotion()) return;
-    const v = document.createElement('video');
-    v.className = 'coach-loop';
-    v.autoplay = true;
-    v.muted = true;
-    v.defaultMuted = true;
-    v.loop = true;
-    v.playsInline = true;
-    v.preload = 'metadata';
-    v.poster = media.poster;
-    v.setAttribute('autoplay', '');
-    v.setAttribute('muted', '');
-    v.setAttribute('loop', '');
-    v.setAttribute('playsinline', '');
-    v.setAttribute('aria-hidden', 'true');
-    v.tabIndex = -1;
-    const sources = media.sources.map(({ src, type }) => {
-      const el = document.createElement('source');
-      el.src = src;
-      el.type = type;
-      return el;
-    });
-    // Falhou (a última fonte deu erro, ou o elemento): sai o vídeo, a capa continua.
-    const fail = () => {
-      if (this.loopVideo !== v) return;
-      v.remove();
-      this.loopVideo = null;
-    };
-    sources[sources.length - 1]?.addEventListener('error', fail);
-    v.addEventListener('error', fail);
-    v.append(...sources);
-    // Logo acima da capa e abaixo do sombreado, do "Play" e do "×" (que ficam por cima).
-    const poster = this.mediaEl.querySelector('.coach-poster');
-    if (poster) poster.after(v);
-    else this.mediaEl.prepend(v);
-    this.loopVideo = v;
-    void v.play().catch(() => undefined);
-  }
-
   /** Recalcula posições sem animar (resize). */
   relayout(): StepLayout | null {
     if (this.index < 0) return null;
+    // O balão do pin (etapa 3) acompanha o pin.
+    if (!this.actionTip.hidden) this.showActionTip();
     return this.positionTooltip('resize');
   }
 
@@ -515,7 +504,6 @@ export class Coachmark {
     window.removeEventListener('keydown', this.swallowEscape, true);
     window.removeEventListener('keyup', this.swallowEscape, true);
     untrackInputModality();
-    document.removeEventListener('visibilitychange', this.handleVisibility);
     document.removeEventListener('click', this.handleTargetClick, true);
     document.documentElement.classList.remove('is-coach-busy');
     window.removeEventListener('resize', this.handleResize);
@@ -571,9 +559,15 @@ export class Coachmark {
     return this.opts.steps[this.index]?.advanceOn === 'action';
   }
 
-  /** Pulso discreto no elemento de ação (para no hover, no clique e fora da etapa). */
+  /**
+   * Destaque do elemento de ação (etapa 3): pin maior, anel luminoso pulsando, salto a
+   * cada ciclo e o balão "Fixar no menu" sempre visível, com seta para o pin. Liga quando
+   * o tooltip entra e só desliga no clique (ou fora da etapa).
+   */
   setActionPulse(on: boolean): void {
     this.actionEl?.classList.toggle('is-pulsing', on);
+    if (on) this.showActionTip();
+    else this.hideActionTip();
   }
 
   private bindAction(step: Step): void {
@@ -586,10 +580,6 @@ export class Coachmark {
     el.classList.add('is-coach-action');
     el.setAttribute('aria-label', step.action.label);
     this.actionTip.textContent = step.action.hint;
-    el.addEventListener('pointerenter', this.showActionTip);
-    el.addEventListener('pointerleave', this.hideActionTip);
-    el.addEventListener('focus', this.showActionTip);
-    el.addEventListener('blur', this.hideActionTip);
   }
 
   private unbindAction(): void {
@@ -603,32 +593,32 @@ export class Coachmark {
       else el.setAttribute('aria-label', label.before);
     }
     this.actionLabel = null;
-    el.removeEventListener('pointerenter', this.showActionTip);
-    el.removeEventListener('pointerleave', this.hideActionTip);
-    el.removeEventListener('focus', this.showActionTip);
-    el.removeEventListener('blur', this.hideActionTip);
     this.actionEl = null;
     this.hideActionTip();
   }
 
-  /** "Fixar no menu" acima do pin, alinhado à direita dele (como na prévia). */
-  private showActionTip = (e?: Event): void => {
+  /**
+   * "Fixar no menu" acima do pin, com a seta apontando para o centro dele. Medido pelo
+   * centro (a escala e o salto do pin não mexem no balão).
+   */
+  private showActionTip(): void {
     const el = this.actionEl;
-    if (!el || this.busy) return;
-    // No foco, só com teclado (o foco programático da entrada não abre o balão).
-    if (e?.type === 'focus' && !el.matches(':focus-visible')) return;
+    if (!el) return;
     const tip = this.actionTip;
     tip.hidden = false;
     const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
     const w = tip.offsetWidth;
     const h = tip.offsetHeight;
-    tip.style.left = `${Math.round(r.right + 6 - w)}px`;
-    tip.style.top = `${Math.round(r.top - h - 8)}px`;
-  };
+    // Seta a 18 px da borda direita do balão, sobre o centro do pin.
+    tip.style.left = `${Math.round(cx + 18 - w)}px`;
+    tip.style.top = `${Math.round(cy - ACTION_TIP_GAP - h)}px`;
+  }
 
-  private hideActionTip = (): void => {
+  private hideActionTip(): void {
     this.actionTip.hidden = true;
-  };
+  }
 
   // ---------- conteúdo ----------
 
@@ -717,10 +707,6 @@ export class Coachmark {
     if (t.kind === 'preview') {
       this.mediaEl.innerHTML = previewMarkup();
       this.demo = new PreviewDemo(this.mediaEl);
-    } else if (t.kind === 'loop' && t.media) {
-      // Até o tooltip terminar de entrar (e sempre, com movimento reduzido ou se o vídeo
-      // falhar), fica a capa no lugar, no mesmo tamanho e com os mesmos cantos.
-      this.mediaEl.innerHTML = `<img class="coach-poster" src="${t.media.poster}" alt="${t.media.alt}" />`;
     } else if (t.kind === 'image' && t.media) {
       this.mediaEl.innerHTML = `<img class="coach-poster" src="${t.media.poster}" alt="${t.media.alt}" />`;
     }
@@ -728,11 +714,6 @@ export class Coachmark {
 
   private stopMedia(): void {
     this.demo?.stop();
-    if (this.loopVideo) {
-      this.loopVideo.pause();
-      this.loopVideo.remove();
-      this.loopVideo = null;
-    }
   }
 
   // ---------- geometria ----------
@@ -752,21 +733,14 @@ export class Coachmark {
     ];
   }
 
-  /** Tamanho do tooltip e a caixa da mídia relativa a ele (medidos mesmo com ele oculto). */
-  private tooltipSize(): { w: number; h: number; media: Rect | null } {
+  /** Tamanho do tooltip (medido mesmo com ele oculto). */
+  private tooltipSize(): { w: number; h: number } {
     const wasHidden = this.tooltip.hidden;
     if (wasHidden) {
       this.tooltip.style.visibility = 'hidden';
       this.tooltip.hidden = false;
     }
-    const m = this.mediaEl;
-    const size = {
-      w: this.tooltip.offsetWidth,
-      h: this.tooltip.offsetHeight,
-      media: m.hidden
-        ? null
-        : { x: m.offsetLeft, y: m.offsetTop, w: m.offsetWidth, h: m.offsetHeight },
-    };
+    const size = { w: this.tooltip.offsetWidth, h: this.tooltip.offsetHeight };
     if (wasHidden) {
       this.tooltip.hidden = true;
       this.tooltip.style.visibility = '';
@@ -802,7 +776,6 @@ export class Coachmark {
       nexo: nexo.rect,
       nexoAnchor: nexo.anchor,
       nexoPlacement: nexo.placement,
-      media: size.media && { ...size.media, x: rect.x + size.media.x, y: rect.y + size.media.y },
     };
     this.lastLayout = layout;
     this.opts.onLayout?.(layout, reason);
@@ -891,7 +864,6 @@ export class Coachmark {
       e.preventDefault();
       e.stopPropagation();
       if (!this.busy) {
-        this.hideActionTip();
         this.setActionPulse(false);
         this.opts.onAction?.(this.index, act);
       }
@@ -906,7 +878,8 @@ export class Coachmark {
     if (advances) {
       e.preventDefault();
       e.stopPropagation();
-      if (!this.busy) this.opts.onNext(this.index);
+      // Mesma regra do "Próximo": só depois que o loader completa.
+      if (!this.busy && !this.nextLocked) this.opts.onNext(this.index);
       return;
     }
     if ((e.target as Element).closest('a[href]')) e.preventDefault();
@@ -965,14 +938,6 @@ export class Coachmark {
         : (i + (e.shiftKey ? -1 : 1) + focusables.length) % focusables.length;
     const el = focusables[nextIndex];
     if (el) focusWithModality(el);
-  };
-
-  /** Aba em segundo plano: o vídeo em loop pausa; ao voltar, continua (se o tooltip está aberto). */
-  private handleVisibility = (): void => {
-    const v = this.loopVideo;
-    if (!v) return;
-    if (document.hidden) v.pause();
-    else if (!this.tooltip.hidden) void v.play().catch(() => undefined);
   };
 
   private handleResize = (): void => {
