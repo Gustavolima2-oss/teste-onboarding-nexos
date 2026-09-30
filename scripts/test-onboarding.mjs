@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Testes do onboarding (fase 2): fluxo das 7 etapas, Nexo persistente entre telas,
-// tooltip só depois da chegada, ida e volta 1→7→1 (estado consistente), FPS no voo com overlay desfocado, teclado, Esc em cada
+// tooltip só depois da chegada, ida e volta 1→7→1 (estado consistente), FPS no voo com overlay desfocado, teclado, Esc ignorado em cada
 // etapa, persistência, movimento reduzido, fallback sem WebGL, vídeo, prévia,
 // voz gravada (grifo, anel, pausa, avanço automático, modo silencioso, boca) e memória
 // do destroy().
@@ -57,6 +57,31 @@ async function newPage(opts = {}) {
     reducedMotion: opts.reducedMotion ?? 'no-preference',
   });
   const page = await context.newPage();
+  // Listeners de teclado ativos em window/document (confere que o fim não deixa nenhum).
+  await page.addInitScript(() => {
+    const live = new Map();
+    window.__keyListeners = () => [...live.values()];
+    const key = (t, type, fn, o) =>
+      `${t === window ? 'window' : 'document'}|${type}|${typeof o === 'boolean' ? o : !!o?.capture}|${live.has(fn) ? '' : ''}`;
+    const ids = new WeakMap();
+    let n = 0;
+    const id = (fn) => (ids.has(fn) ? ids.get(fn) : (ids.set(fn, ++n), n));
+    const add = EventTarget.prototype.addEventListener;
+    const rem = EventTarget.prototype.removeEventListener;
+    const watched = (t, type) => (t === window || t === document) && /^key/.test(type);
+    EventTarget.prototype.addEventListener = function (type, fn, o) {
+      if (watched(this, type) && fn)
+        live.set(
+          `${key(this, type, fn, o)}${id(fn)}`,
+          `${key(this, type, fn, o)}${String(fn).slice(0, 60)}`,
+        );
+      return add.call(this, type, fn, o);
+    };
+    EventTarget.prototype.removeEventListener = function (type, fn, o) {
+      if (watched(this, type) && fn) live.delete(`${key(this, type, fn, o)}${id(fn)}`);
+      return rem.call(this, type, fn, o);
+    };
+  });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => {
@@ -192,19 +217,64 @@ const recorder = () => {
     timeout: 15000,
   });
   await page.waitForTimeout(300);
-  const end = await page.evaluate(() => ({
-    overlay: !!document.querySelector('.coach-overlay'),
-    tooltip: !!document.querySelector('.coach-tooltip'),
-    done: localStorage.getItem('onboarding:done'),
-    focusInPage: !!document.activeElement?.closest('.screen, .sidebar'),
-    overflow: document.documentElement.style.overflow,
-    nexoOpacity: window.__nexo.nexo.debugStage?.motion.opacity,
-  }));
-  check(
-    'fim: overlay e tooltip removidos, rolagem destravada, Nexo saiu',
-    !end.overlay && !end.tooltip && end.overflow === '' && end.nexoOpacity === 0,
+  const end = await page.evaluate(() => {
+    const html = document.documentElement;
+    const first = document.querySelector(
+      '.screen :is(a[href], button:not([disabled]), input, select, textarea)',
+    );
+    return {
+      // Elementos do tour que não podem sobrar.
+      leftovers: document.querySelectorAll(
+        '.coach-overlay, .coach-tooltip, .coach-action-tip, .coach-fly, .nexo-canvas, .nexo-fallback, .nexo-debug-panel, .nexo-debug-ref',
+      ).length,
+      // Classes e atributos de destaque (z-index acima do overlay) em qualquer elemento.
+      marked: [
+        ...document.querySelectorAll(
+          '[class*="is-coach"], [data-coach-highlight], [data-coach-advance]',
+        ),
+      ].map((e) => e.className || e.tagName),
+      htmlClass: html.className,
+      htmlStyle: html.getAttribute('style') ?? '',
+      bodyStyle: document.body.getAttribute('style') ?? '',
+      input: html.dataset.input ?? null,
+      step: html.dataset.coachStep ?? null,
+      // Nada com z-index fora do normal (overlay: 1000+) na página.
+      highZ: [...document.querySelectorAll('body *')].filter(
+        (e) => Number(getComputedStyle(e).zIndex) >= 100,
+      ).length,
+      done: localStorage.getItem('onboarding:done'),
+      focusFirst: document.activeElement === first,
+      nexoMode: window.__nexo.nexo.mode,
+      stage: window.__nexo.nexo.debugStage,
+      keys: window.__keyListeners(),
+    };
+  });
+  // Resta só o atalho de demonstração (R/1–9, fora do tour: dev e site de demonstração).
+  // (o trecho do listener vem cortado em 60 caracteres: casa pelo começo dele).
+  const keysLeft = end.keys.filter(
+    (k) => !/^document\|keydown\|false\|\(e\) => \{\s*if \(e\.metaKey \|\| e\.ctrlKey/.test(k),
   );
-  check('fim: onboarding:done persistido e foco na página', end.done === '1' && end.focusInPage);
+  check(
+    'fim: overlay, blur, tooltip, destaques e z-index removidos; rolagem destravada',
+    end.leftovers === 0 &&
+      end.marked.length === 0 &&
+      end.htmlClass === '' &&
+      !/--coach|overflow/.test(end.htmlStyle) &&
+      !/padding-right/.test(end.bodyStyle) &&
+      end.highZ === 0 &&
+      end.input === null &&
+      end.step === null,
+    JSON.stringify({ ...end, keys: undefined }),
+  );
+  check(
+    'fim: Nexo destruído (canvas e recursos liberados) e nenhum listener de teclado do tour',
+    end.nexoMode === 'none' && end.stage === null && keysLeft.length === 0,
+    JSON.stringify(end.keys),
+  );
+  check(
+    'fim: onboarding:done persistido e foco no primeiro elemento da tela',
+    end.done === '1' && end.focusFirst,
+  );
 
   // Persistência: recarregar não repete o onboarding.
   await page.goto(`${base}#/home`);
@@ -256,7 +326,7 @@ const recorder = () => {
   await context.close();
 }
 
-// ---------- 2. Teclado: Tab preso no tooltip; Esc em cada etapa ----------
+// ---------- 2. Teclado: Tab preso no tooltip; Esc não faz nada ----------
 {
   const { page, context, errors } = await newPage();
   await page.goto(`${base}?onboarding=reset&step=3#/ferramentas`);
@@ -288,26 +358,121 @@ const recorder = () => {
   check('anel de foco só com teclado (:focus-visible)', ring === true);
   await context.close();
 
+  // Esc em cada etapa: nada muda (etapa, estado, overlay, timer/voz) e não chega a
+  // nenhum outro listener nem ao comportamento padrão; as outras teclas seguem normais.
+  const escSnap = (p) =>
+    p.evaluate(() => {
+      const f = window.__nexo.voice.lastFrame;
+      const d = document.documentElement.dataset;
+      return {
+        step: d.coachStep,
+        state: d.coachState,
+        overlay: !!document.querySelector('.coach-overlay'),
+        tooltip: !document.querySelector('.coach-tooltip')?.hidden,
+        route: location.hash,
+        voice: f?.voice ?? false,
+        mode: f?.mode ?? null,
+        progress: f?.progress ?? 0,
+        audioPaused: window.__nexo.voice.element?.paused ?? null,
+      };
+    });
+  const pressEsc = (p) =>
+    p.evaluate(() => {
+      window.__escSeen = 0;
+      window.__otherSeen = 0;
+      const spy = (e) => (e.key === 'Escape' ? window.__escSeen++ : window.__otherSeen++);
+      document.addEventListener('keydown', spy);
+      document.body.addEventListener('keydown', spy, true);
+      const ev = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        code: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      document.activeElement.dispatchEvent(ev);
+      // Outra tecla (Shift) continua chegando aos listeners.
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }),
+      );
+      document.removeEventListener('keydown', spy);
+      document.body.removeEventListener('keydown', spy, true);
+      return {
+        prevented: ev.defaultPrevented,
+        escSeen: window.__escSeen,
+        otherSeen: window.__otherSeen,
+      };
+    });
   for (let i = 1; i <= IDS.length; i++) {
     const { page: p, context: c, errors: e } = await newPage();
     await p.goto(`${base}?onboarding=reset&step=${i}`);
     await ready(p, IDS[i - 1]);
-    await p.keyboard.press('Escape');
-    await p.waitForFunction(() => document.documentElement.dataset.coachState === 'closed', null, {
-      timeout: 15000,
-    });
-    const r = await p.evaluate(() => ({
-      overlay: !!document.querySelector('.coach-overlay'),
-      targets: document.querySelectorAll(
-        '.is-coach-target, .is-coach-leaving, .is-coach-layer, .is-coach-layer-leaving',
-      ).length,
-      done: localStorage.getItem('onboarding:done'),
-      overflow: document.documentElement.style.overflow,
-    }));
+    const before = await escSnap(p);
+    const ev = await pressEsc(p);
+    // E a tecla real, algumas vezes.
+    for (let k = 0; k < 3; k++) await p.keyboard.press('Escape');
+    await p.waitForTimeout(400);
+    const after = await escSnap(p);
+    const same =
+      after.step === before.step &&
+      after.state === 'ready' &&
+      after.overlay &&
+      after.tooltip &&
+      after.route === before.route &&
+      after.voice === before.voice &&
+      after.mode === before.mode &&
+      // Timer segue correndo (na etapa 3, de ação, não há timer: fica em 0).
+      (IDS[i - 1] === 'conversas' ? after.progress === 0 : after.progress > before.progress);
     check(
-      `Esc na etapa ${i} encerra (overlay, alvos e trava removidos; done salvo)`,
-      !r.overlay && r.targets === 0 && r.done === '1' && r.overflow === '' && e.length === 0,
-      e.join(' | '),
+      `Esc na etapa ${i} não faz nada (mesma etapa, overlay, timer seguindo; sem padrão nem outros listeners)`,
+      same && ev.prevented && ev.escSeen === 0 && ev.otherSeen === 2 && e.length === 0,
+      JSON.stringify({ before, after, ev, e }),
+    );
+    await c.close();
+  }
+  // Com a voz ligada: o Esc não pausa nem para a fala.
+  {
+    const { page: p, context: c, errors: e } = await newPage();
+    await p.goto(`${base}?onboarding=reset&step=2#/ferramentas`);
+    await ready(p, 'agentes');
+    await p.click('.coach-audio');
+    await p.waitForFunction(() => (window.__nexo.voice.lastFrame?.progress ?? 0) > 0.05);
+    const before = await escSnap(p);
+    await p.keyboard.press('Escape');
+    await p.waitForTimeout(400);
+    const after = await escSnap(p);
+    check(
+      'Esc com a voz ligada: a fala continua (sem pausa, anel avançando)',
+      after.voice &&
+        after.mode === 'playing' &&
+        after.audioPaused === false &&
+        after.progress > before.progress &&
+        after.step === 'agentes' &&
+        e.length === 0,
+      JSON.stringify({ before, after }),
+    );
+    await c.close();
+  }
+  // Não há outra saída: nenhum botão de fechar em nenhuma etapa.
+  {
+    const { page: p, context: c } = await newPage();
+    const closers = [];
+    for (let i = 1; i <= IDS.length; i++) {
+      await p.goto(`${base}?onboarding=reset&step=${i}`);
+      await ready(p, IDS[i - 1]);
+      await p.waitForTimeout(300);
+      closers.push(
+        await p.evaluate(
+          () =>
+            document.querySelectorAll(
+              '.coach-close, .coach-tooltip [aria-label*="Fechar"], .coach-tooltip [aria-label*="fechar"]',
+            ).length,
+        ),
+      );
+    }
+    check(
+      'nenhuma etapa tem botão de fechar (a única saída é o Finalizar)',
+      closers.every((n) => n === 0),
+      closers.join(','),
     );
     await c.close();
   }
@@ -1482,20 +1647,41 @@ const recorder = () => {
   // De novo para a 9 e Finalizar: sem voo de saída, só tooltip e overlay somem.
   await page.click('.coach-next');
   await ready(page, 'waz');
-  await page.click('.coach-next');
-  await page.waitForFunction(() => document.documentElement.dataset.coachState === 'closed', null, {
-    timeout: 8000,
+  // Grava se o Nexo voa ou aparece entre o clique no Finalizar e o fim.
+  const endLog = page.evaluate(async () => {
+    const { nexo } = window.__nexo;
+    const log = [];
+    await new Promise((res) => {
+      const f = () => {
+        const st = nexo.debugStage;
+        log.push({
+          flying: nexo.isFlying,
+          opacity: st ? st.motion.opacity : 0,
+          running: st?.isRunning ?? false,
+        });
+        if (document.documentElement.dataset.coachState === 'closed') res();
+        else requestAnimationFrame(f);
+      };
+      requestAnimationFrame(f);
+    });
+    return log;
   });
+  await page.click('.coach-next');
+  const endFrames = await endLog;
   const end = await page.evaluate(() => ({
     overlay: !!document.querySelector('.coach-overlay'),
     tooltip: !!document.querySelector('.coach-tooltip'),
-    opacity: window.__nexo.nexo.debugStage.motion.opacity,
-    running: window.__nexo.nexo.debugStage.isRunning,
+    canvas: !!document.querySelector('.nexo-canvas'),
+    mode: window.__nexo.nexo.mode,
   }));
   check(
-    'etapa 9: Finalizar encerra sem o voo de saída (overlay e tooltip saem, Nexo segue oculto)',
-    !end.overlay && !end.tooltip && end.opacity === 0 && !end.running,
-    JSON.stringify(end),
+    'etapa 9: Finalizar encerra sem o voo de saída (Nexo nunca reaparece; overlay, tooltip e canvas saem)',
+    endFrames.every((f) => !f.flying && f.opacity === 0 && !f.running) &&
+      !end.overlay &&
+      !end.tooltip &&
+      !end.canvas &&
+      end.mode === 'none',
+    JSON.stringify({ end, frames: endFrames.length }),
   );
   check('etapa 9 (Nexo no vídeo): sem erros', errors.length === 0, errors.join(' | '));
   await context.close();

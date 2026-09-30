@@ -82,13 +82,18 @@ function ensureContext(): AudioContext | null {
  * (inicialização do áudio) e isso engasgaria o primeiro clique da página. Ele nasce só
  * quando a voz é ligada (enableVoice).
  */
-export function installAudioUnlock(): void {
+export function installAudioUnlock(): () => void {
   const unlock = () => {
     unlocked = true;
     if (ctx && ctx.state === 'suspended') void ctx.resume();
   };
   document.addEventListener('pointerdown', unlock, true);
   document.addEventListener('keydown', unlock, true);
+  // Devolve a remoção (fim do tour).
+  return () => {
+    document.removeEventListener('pointerdown', unlock, true);
+    document.removeEventListener('keydown', unlock, true);
+  };
 }
 
 export class VoicePlayer {
@@ -217,7 +222,7 @@ export class VoicePlayer {
     }
   }
 
-  /** Para tudo na hora e zera anel, grifo e boca (troca de etapa, Esc). */
+  /** Para tudo na hora e zera anel, grifo e boca (troca de etapa, fim). */
   stop(): void {
     this.token++;
     if (this.el) {

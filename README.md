@@ -13,11 +13,9 @@ Protótipo do onboarding do produto. O mascote 3D **Nexo** guia o usuário por *
 | Avançar                   | Botão **Próximo**, **→** ou **Enter**                                                                                                                                                                               |
 | Voltar                    | Botão **Voltar**, ou **←** (a partir da etapa 2)                                                                                                                                                                    |
 | Avançar pelo item marcado | Nas etapas 1, 4 e 5 o item destacado é clicável: clicar nele avança, como no produto real. Na etapa 3 não há "Próximo": avance **favoritando** pelo pin do card Conversas (clique, ou Enter/Espaço com o foco nele) |
-| Sair do tour              | **Esc**                                                                                                                                                                                                             |
 | Reiniciar do começo       | **R**                                                                                                                                                                                                               |
 | Ir direto a uma etapa     | **1** a **9**                                                                                                                                                                                                       |
 | Ouvir / pausar a voz      | Ícone no tooltip, ou **Espaço**: liga a voz; pausar desliga (texto todo branco, sem avanço automático) e ligar de novo recomeça a fala do início                                                                    |
-| Vídeo (etapas 6 e 7)      | Botão **Play** no tooltip (pausa a fala)                                                                                                                                                                            |
 
 O **Tab** circula dentro do tooltip ("Voltar", áudio e "Próximo"). Com `prefers-reduced-motion`, o Nexo não voa: ele troca de lugar com um fade.
 
@@ -115,7 +113,7 @@ interface NexoGuide {
 - **Âncora:** é o **centro do corpo** do robô, em px da viewport. Um `DOMRect` vale pelo centro dele.
 - **Extras opcionais**, fora do contrato:
   - `placeAt(anchor)`: reposiciona sem animar (resize);
-  - `hide()`: fade curto (Esc);
+  - `hide()`: fade curto;
   - `useFallback()`, `stopTalking()`;
   - `gesture('point', { target })`: inclina na direção do alvo.
 - **Fallback automático:** sem WebGL, ou se o GLB falhar ou levar mais de 3 s, o Nexo vira um PNG posicionado pela mesma API, com fade entre as etapas.

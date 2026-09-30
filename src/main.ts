@@ -238,7 +238,7 @@ async function start(): Promise<void> {
   };
 
   // Voz gravada: o player publica grifo, gradiente e boca a cada quadro.
-  installAudioUnlock();
+  const uninstallAudioUnlock = installAudioUnlock();
   const voice = new VoicePlayer({
     onFrame: (f) => {
       coach.setVoiceProgress(f.progress, f.spoken);
@@ -262,7 +262,7 @@ async function start(): Promise<void> {
         autoAdvance = null;
         if (busy || closing || STEPS[current]?.voice !== id) return;
         // Mesma transição do clique em "Próximo" (na última etapa, encerra o tour).
-        if (current >= STEPS.length - 1) void finish(true);
+        if (current >= STEPS.length - 1) void finish();
         else void go(current, current + 1);
       });
     },
@@ -287,14 +287,13 @@ async function start(): Promise<void> {
     },
     onNext: (index) => {
       if (busy) return;
-      if (index >= STEPS.length - 1) void finish(true);
+      if (index >= STEPS.length - 1) void finish();
       else void go(index, index + 1);
     },
     onBack: (index) => {
       if (busy || index <= 0) return;
       void go(index, index - 1);
     },
-    onClose: () => void finish(false),
     onAction: (index, el) => {
       if (busy || closing || index !== current) return;
       void runAction(index, el);
@@ -509,8 +508,13 @@ async function start(): Promise<void> {
     await present(step, coach.layout ?? layout);
   }
 
-  // ---------- fim (Próximo na última etapa ou Esc) ----------
-  async function finish(withGesture: boolean): Promise<void> {
+  // ---------- fim ("Finalizar" da etapa 9, a única saída) ----------
+  /**
+   * Encerra o tour e deixa a página como se ele nunca tivesse rodado: overlay, blur,
+   * destaques e trava de rolagem saem (coach.close), o Nexo é destruído (canvas, GPU,
+   * voz e listeners) e o foco vai para o primeiro elemento interativo da tela.
+   */
+  async function finish(): Promise<void> {
     if (closing) return;
     closing = true;
     busy = true;
@@ -523,17 +527,23 @@ async function start(): Promise<void> {
     coach.setBusy(true);
     const hidden = coach.hideTooltip();
     // Com o Nexo dentro da mídia (etapa 9), sem tchau nem voo de saída: só tooltip e overlay.
-    if (withGesture && !nexo.isVanished) await nexo.gesture('bye');
+    if (!nexo.isVanished) await nexo.gesture('bye');
     const exited = nexo.exit();
     coach.unhighlight(TARGET_TRANSITION_MS);
     await Promise.all([hidden, coach.dim(0, 0.45, 'power2.inOut'), exited]);
     coach.close();
+    nexo.destroy();
+    debug.destroy();
+    uninstallAudioUnlock();
     writeDone();
     setState('closed');
-    // Foco no primeiro elemento interativo da página.
-    document
-      .querySelector<HTMLElement>('.screen a, .screen button, .screen input, .sidebar a')
-      ?.focus();
+    delete document.documentElement.dataset.coachStep;
+    // Foco no primeiro elemento interativo da tela (ou da sidebar, se a tela não tiver).
+    const focusable = 'a[href], button:not([disabled]), input, select, textarea';
+    (
+      document.querySelector<HTMLElement>(`.screen :is(${focusable})`) ??
+      document.querySelector<HTMLElement>(`.sidebar :is(${focusable})`)
+    )?.focus();
   }
 
   // ---------- abertura ----------

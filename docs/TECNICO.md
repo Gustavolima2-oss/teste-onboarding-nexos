@@ -32,7 +32,7 @@ O `npm test` abre o Chrome instalado via `playwright-core`. Ele cobre:
 - ida e volta 1→7→1 (Próximo, →, Voltar e ←): em cada etapa, rota, bolinhas, alvo sem resto de destaque, favorito "Conversas" na sidebar só da 4 em diante, botões, foco, Nexo no ponto certo, sem sonda nem tela duplicada; botões desabilitados durante o voo; rodapé igual em todas as etapas;
 - alvo navegável (cursor, hover, clique avança nas etapas 1, 4 e 5; na 7 o clique não navega) e a tela limpa nas trocas entre telas (overlay a 0, ~600 ms de tela nítida, overlay só volta depois do voo; na mesma tela o overlay não pisca);
 - o tooltip nunca aparecendo durante o voo, e o FPS no voo;
-- fim do tour, persistência, Tab preso no tooltip, `:focus-visible` e Esc em cada uma das 9 etapas;
+- fim do tour sem resíduos (overlay, destaques, z-index, trava de rolagem, Nexo destruído, listeners de teclado), persistência, Tab preso no tooltip, `:focus-visible` e o Esc ignorado em cada uma das 9 etapas;
 - movimento reduzido e fallback sem WebGL;
 - prévia animada e vídeo;
 - voz: começa sem voz (texto branco, timer de max(duração × 2,5; 6 s) avançando sozinho); o alto-falante liga a voz (áudio certo, grifo, anel reiniciado) e o avanço passa a ser em duração + 400 ms, com a etapa seguinte já falando; pausa e retomada no início da palavra; avançar pausado volta ao modo sem voz; "Próximo" interrompe a fala; `play()` rejeitado cai no modo sem voz; boca só com palavra ativa;
@@ -108,9 +108,9 @@ assets-src/               originais: nexo-3d.glb (fora do repositório) e o PNG 
 - **Um dono por eixo:** durante o voo, posição, escala, banking (Z) e yaw pertencem ao arco; durante o gesto, o olhar fica congelado e a flutuação desligada. A flutuação (±3 px em 3 s, sem rotação) e o olhar voltam quando o gesto termina. Nenhum movimento usa `back`/`elastic`.
 - **Entre telas:** a tela seguinte é montada numa sonda invisível para medir o destino antes da decolagem. A troca real (fade out 200 ms, montagem, fade in 250 ms) acontece por baixo do voo.
 - **Voltar:** a mesma troca, no sentido inverso (ver "Navegação nos dois sentidos").
-- **Timer e fala:** começam quando o tooltip termina de entrar. Sem voz (padrão), o anel é um timer de leitura (duração × 2,5, mínimo 6 s) e o fluxo avança no fim; com voz, o anel segue o áudio e o fluxo avança 400 ms depois do fim. Toda troca (Próximo, Voltar, alvo, avanço automático, Esc) para o áudio e zera grifo, anel e boca antes de qualquer animação. O áudio da etapa seguinte é pré-carregado nos dois modos.
+- **Timer e fala:** começam quando o tooltip termina de entrar. Sem voz (padrão), o anel é um timer de leitura (duração × 2,5, mínimo 6 s) e o fluxo avança no fim; com voz, o anel segue o áudio e o fluxo avança 400 ms depois do fim. Toda troca (Próximo, Voltar, alvo, avanço automático, Finalizar) para o áudio e zera grifo, anel e boca antes de qualquer animação. O áudio da etapa seguinte é pré-carregado nos dois modos.
 - **Etapas especiais:** na 3, a demonstração do cursor começa depois do tooltip. Nas 6 e 7, o Play do vídeo pausa a fala e o Nexo passa a `listen`.
-- **Fim:** no "Próximo" da etapa 7, o tooltip sai, o Nexo faz `bye` e voa para fora (900 ms), o overlay some e o foco vai para a página. O Esc encerra a qualquer momento, pela mesma saída sem o gesto.
+- **Fim:** no "Próximo" da etapa 7, o tooltip sai, o Nexo faz `bye` e voa para fora (900 ms), o overlay some e o foco vai para a página. O "Finalizar" é a única saída: o Esc é ignorado durante o tour e não há botão de fechar. No fim, o Nexo é destruído (`destroy()`) e nada do tour fica na página.
 
 ## Render e modelo
 

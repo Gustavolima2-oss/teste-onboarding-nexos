@@ -29,7 +29,11 @@ import {
 } from './steps';
 import { PreviewDemo, previewMarkup } from './previewDemo';
 import { prefersReducedMotion } from '../utils/reducedMotion';
-import { focusWithModality, trackInputModality } from '../utils/inputModality';
+import {
+  focusWithModality,
+  trackInputModality,
+  untrackInputModality,
+} from '../utils/inputModality';
 import { asset } from '../utils/asset';
 
 const TARGET_CLASS = 'is-coach-target';
@@ -61,7 +65,6 @@ export type CoachmarkOptions = {
   onNext: (index: number) => void;
   /** "Voltar" (a partir da etapa 2). */
   onBack: (index: number) => void;
-  onClose: () => void;
   /** Etapa com advanceOn 'action': o usuário fez a ação (ex.: clicou no pin). */
   onAction?: (index: number, el: HTMLElement) => void;
   /** Alto-falante (ou Espaço no tooltip): pausa/retoma a fala, ou liga o som no modo silencioso. */
@@ -130,6 +133,8 @@ export class Coachmark {
   private busy = false;
   /** Elemento de ação da etapa (advanceOn 'action'), fora do tooltip. */
   private actionEl: HTMLElement | null = null;
+  /** Rótulo que o elemento de ação tinha antes do tour e o que o tour aplicou. */
+  private actionLabel: { before: string | null; applied: string } | null = null;
   /** Mini tooltip do elemento de ação no hover/foco ("Fixar no menu"), na camada do coach mark. */
   private readonly actionTip: HTMLDivElement;
   private readonly nextWrap: HTMLSpanElement;
@@ -221,6 +226,10 @@ export class Coachmark {
     this.tooltip.addEventListener('click', this.handleClick);
     document.addEventListener('click', this.handleTargetClick, true);
     document.addEventListener('keydown', this.handleKeydown);
+    // Esc não faz nada durante o tour: barrado na captura da window, antes de qualquer
+    // outro listener (e sem o comportamento padrão do navegador).
+    window.addEventListener('keydown', this.swallowEscape, true);
+    window.addEventListener('keyup', this.swallowEscape, true);
     document.addEventListener('visibilitychange', this.handleVisibility);
     window.addEventListener('resize', this.handleResize);
   }
@@ -478,27 +487,34 @@ export class Coachmark {
     this.stopMedia();
     this.demo?.dispose();
     this.demo = null;
+    // Nada do destaque fica para trás, nem nos alvos que ainda estavam saindo dele.
     for (const [el, t] of this.leaving) {
       window.clearTimeout(t);
       el.classList.remove(LEAVING_CLASS, LAYER_LEAVING_CLASS);
+      delete el.dataset.coachHighlight;
+      delete el.dataset.coachAdvance;
     }
     this.leaving.clear();
     for (const el of this.highlighted) {
       el.classList.remove(TARGET_CLASS);
       delete el.dataset.coachHighlight;
+      delete el.dataset.coachAdvance;
     }
     for (const l of this.highlightedLayers) l.classList.remove(LAYER_CLASS);
     this.highlighted = [];
     this.highlightedLayers = [];
     this.targets = [];
     document.documentElement.style.removeProperty('--coach-target-dur');
+    document.documentElement.style.removeProperty('--coach-dim');
     this.overlay.remove();
     this.tooltip.remove();
     gsap.set(this.tooltip, { clearProps: 'opacity,transform' });
-    setDim(1);
     this.unlockScroll();
     this.tooltip.removeEventListener('click', this.handleClick);
     document.removeEventListener('keydown', this.handleKeydown);
+    window.removeEventListener('keydown', this.swallowEscape, true);
+    window.removeEventListener('keyup', this.swallowEscape, true);
+    untrackInputModality();
     document.removeEventListener('visibilitychange', this.handleVisibility);
     document.removeEventListener('click', this.handleTargetClick, true);
     document.documentElement.classList.remove('is-coach-busy');
@@ -566,6 +582,7 @@ export class Coachmark {
     const el = document.querySelector<HTMLElement>(step.action.selector);
     if (!el) return;
     this.actionEl = el;
+    this.actionLabel = { before: el.getAttribute('aria-label'), applied: step.action.label };
     el.classList.add('is-coach-action');
     el.setAttribute('aria-label', step.action.label);
     this.actionTip.textContent = step.action.hint;
@@ -579,6 +596,13 @@ export class Coachmark {
     const el = this.actionEl;
     if (!el) return;
     el.classList.remove('is-coach-action', 'is-pulsing');
+    // Devolve o rótulo da tela (a não ser que a tela já tenha trocado o dela).
+    const label = this.actionLabel;
+    if (label && el.getAttribute('aria-label') === label.applied) {
+      if (label.before === null) el.removeAttribute('aria-label');
+      else el.setAttribute('aria-label', label.before);
+    }
+    this.actionLabel = null;
     el.removeEventListener('pointerenter', this.showActionTip);
     el.removeEventListener('pointerleave', this.hideActionTip);
     el.removeEventListener('focus', this.showActionTip);
@@ -690,9 +714,8 @@ export class Coachmark {
       return;
     }
     this.mediaEl.hidden = false;
-    const close = `<button type="button" class="coach-close" aria-label="Fechar o tour"><img src="${asset('images/onboarding/close.svg')}" alt="" width="13.049" height="13.049" /></button>`;
     if (t.kind === 'preview') {
-      this.mediaEl.innerHTML = previewMarkup() + close;
+      this.mediaEl.innerHTML = previewMarkup();
       this.demo = new PreviewDemo(this.mediaEl);
     } else if (t.kind === 'loop' && t.media) {
       // Até o tooltip terminar de entrar (e sempre, com movimento reduzido ou se o vídeo
@@ -854,7 +877,6 @@ export class Coachmark {
     if (btn === this.nextButton) this.opts.onNext(this.index);
     else if (btn === this.backButton) this.opts.onBack(this.index);
     else if (btn === this.audioButton) this.opts.onVoiceToggle?.();
-    else if (btn.classList.contains('coach-close')) this.opts.onClose();
   };
 
   /**
@@ -890,12 +912,14 @@ export class Coachmark {
     if ((e.target as Element).closest('a[href]')) e.preventDefault();
   };
 
+  /** Esc durante o tour: ignorado (a única saída é o "Finalizar" da etapa 9). */
+  private swallowEscape = (e: KeyboardEvent): void => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  };
+
   private handleKeydown = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      this.opts.onClose();
-      return;
-    }
     if (this.tooltip.hidden) return;
     const active = document.activeElement;
     // Setas e Enter navegam, exceto dentro de um campo.

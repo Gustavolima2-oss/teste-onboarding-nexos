@@ -350,22 +350,6 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   display: none;
 }
 
-.coach-close {
-  position: absolute;
-  left: 341.29px;
-  top: 11.59px;
-  display: grid;
-  place-items: center;
-  width: 24.414px;
-  height: 24.414px;
-  padding: 0;
-  border: 0;
-  border-radius: 76px;
-  background: rgba(0, 0, 0, 0.4);
-  cursor: pointer;
-  z-index: 2;
-}
-
 /* Capa e vídeo em loop (etapa 9): cobrem a mídia inteira. */
 .coach-poster,
 .coach-loop {

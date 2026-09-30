@@ -6,15 +6,28 @@
 let lastWasKeyboard = false;
 let installed = false;
 
+const set = (keyboard: boolean) => {
+  lastWasKeyboard = keyboard;
+  document.documentElement.dataset.input = keyboard ? 'keyboard' : 'pointer';
+};
+const onKey = () => set(true);
+const onPointer = () => set(false);
+
 export function trackInputModality(): void {
   if (installed) return;
   installed = true;
-  const set = (keyboard: boolean) => {
-    lastWasKeyboard = keyboard;
-    document.documentElement.dataset.input = keyboard ? 'keyboard' : 'pointer';
-  };
-  document.addEventListener('keydown', () => set(true), true);
-  document.addEventListener('pointerdown', () => set(false), true);
+  document.addEventListener('keydown', onKey, true);
+  document.addEventListener('pointerdown', onPointer, true);
+}
+
+/** Remove os listeners e o data-input (fim do tour: nada fica para trás). */
+export function untrackInputModality(): void {
+  if (!installed) return;
+  installed = false;
+  lastWasKeyboard = false;
+  document.removeEventListener('keydown', onKey, true);
+  document.removeEventListener('pointerdown', onPointer, true);
+  delete document.documentElement.dataset.input;
 }
 
 export function focusWithModality(el: HTMLElement): void {

@@ -466,7 +466,7 @@ export class NexoGuide implements NexoGuideApi {
     this.visible = false;
   }
 
-  /** Some com um fade curto, sem voo (Esc). */
+  /** Some com um fade curto, sem voo. */
   async hide(): Promise<void> {
     this.current?.kill();
     this.gestureTl?.kill();
