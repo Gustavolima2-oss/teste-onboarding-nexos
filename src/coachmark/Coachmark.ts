@@ -87,8 +87,11 @@ export type StepLayout = {
   nexoPlacement: Placement;
 };
 
-/** O ícone mostra a AÇÃO do clique: alto-falante (voz desligada ou pausada) ou pausa (tocando). */
-export type VoiceButtonState = 'off' | 'playing';
+/**
+ * O ícone mostra a AÇÃO do clique: alto-falante (modo texto), alto-falante pulsando (voz
+ * armada: o navegador bloqueou o áudio) ou pausa (falando).
+ */
+export type VoiceButtonState = 'off' | 'armed' | 'playing';
 
 /** Botões do Figma: "Próximo" 87×40 e "Finalizar" 89×40 (etapa 9). */
 const NEXT_SIZE = { next: { w: 87, h: 40 }, final: { w: 89, h: 40 } };
@@ -128,8 +131,8 @@ export class Coachmark {
   private opened = false;
   private demo: PreviewDemo | null = null;
   /**
-   * "Próximo" bloqueado até o loader (fala ou timer de leitura) completar. Volta a
-   * bloquear a cada etapa nova (goTo).
+   * "Próximo" bloqueado durante a fala (modo com voz). Nos modos texto e armado, ativo.
+   * Volta a bloquear a cada etapa nova (goTo); o orquestrador define pelo modo.
    */
   private nextLocked = true;
   private voiceState: VoiceButtonState | null = null;
@@ -319,7 +322,7 @@ export class Coachmark {
     this.tooltip.hidden = false;
     this.tooltip.classList.add('is-visible');
     // Etapa de ação: o foco vai para o elemento da ação (Enter/Espaço já o acionam). Com o
-    // "Próximo" ainda bloqueado (loader enchendo), o foco fica no próprio tooltip e passa
+    // "Próximo" ainda bloqueado (fala em andamento), o foco fica no próprio tooltip e passa
     // para o "Próximo" quando ele é ativado.
     focusWithModality(this.actionEl ?? (this.nextButton.disabled ? this.tooltip : this.nextButton));
     if (!animate) {
@@ -382,7 +385,7 @@ export class Coachmark {
     this.syncNext();
   }
 
-  /** "Próximo" liberado: o loader (fala ou timer de leitura) completou. */
+  /** "Próximo" bloqueado: o modo com voz ainda está falando. */
   get isNextLocked(): boolean {
     return this.nextLocked;
   }
@@ -402,7 +405,7 @@ export class Coachmark {
 
   /**
    * Estado do "Próximo": desabilitado em transição, na etapa de ação (sem "Próximo":
-   * invisível, ocupando o lugar) e enquanto o loader enche.
+   * invisível, ocupando o lugar) e durante a fala (modo com voz).
    */
   private syncNext(): void {
     const off = this.busy || this.isActionStep() || this.nextLocked;
@@ -411,14 +414,15 @@ export class Coachmark {
   }
 
   /**
-   * Estado do alto-falante, sempre mostrando a ação do clique: 'off' (voz desligada ou
-   * pausada: alto-falante, "Ouvir o Nexo") ou 'playing' (pausa, "Pausar", aria-pressed).
+   * Estado do ícone de som, sempre mostrando a ação do clique: 'off' (modo texto:
+   * alto-falante, "Ouvir o Nexo"), 'armed' (autoplay bloqueado: alto-falante pulsando) ou
+   * 'playing' (falando: pausa, "Pausar", aria-pressed).
    */
   setVoiceState(state: VoiceButtonState): void {
     if (state === this.voiceState) return;
     this.voiceState = state;
     const b = this.audioButton;
-    const label = { off: 'Ouvir o Nexo', playing: 'Pausar' }[state];
+    const label = { off: 'Ouvir o Nexo', armed: 'Ouvir o Nexo', playing: 'Pausar' }[state];
     b.setAttribute('aria-pressed', String(state === 'playing'));
     b.setAttribute('aria-label', label);
     b.title = label;
@@ -426,7 +430,7 @@ export class Coachmark {
   }
 
   /**
-   * Texto no início da etapa: sem voz, inteiro em branco; com voz, todo cinza (acende
+   * Texto no início da etapa: modo texto, inteiro em branco; com voz, todo cinza (acende
    * palavra a palavra). O anel volta a zero.
    */
   prepareText(voice: boolean): void {
@@ -878,7 +882,7 @@ export class Coachmark {
     if (advances) {
       e.preventDefault();
       e.stopPropagation();
-      // Mesma regra do "Próximo": só depois que o loader completa.
+      // Mesma regra do "Próximo": no modo com voz, só depois que a fala termina.
       if (!this.busy && !this.nextLocked) this.opts.onNext(this.index);
       return;
     }

@@ -94,3 +94,10 @@ Divergências e decisões (também no README):
 - **Vídeos das etapas 6 e 7:** o topo agora é um thumb em vídeo próprio de cada etapa; o "Play" ainda abre o mesmo vídeo de placeholder nas duas.
 - **Etapa 9:** o topo do tooltip agora é um vídeo em loop (`public/video/waz-nexo.webm` / `.mp4`, capa `waz-nexo-poster.jpg`).
 - **Navegadores:** testado no Chrome. Safari e Firefox seguem pendentes.
+
+## 8. Três modos, sem timer (substitui as regras de timer acima)
+
+- O tour começa **com voz**. O "Próximo" deriva só do modo: desativado durante a fala (com a borda de progresso acompanhando o áudio), ativo no modo texto e no modo armado.
+- O timer de leitura saiu: as constantes `SILENT_TIMER_FACTOR` e `SILENT_TIMER_MIN_MS` foram removidas. No modo texto não há relógio, e nada avança sozinho.
+- Autoplay bloqueado deixa a voz **armada** (texto branco, ícone pulsando, botão ativo) até o primeiro clique ou tecla na página, que começa a fala da etapa atual.
+- Detalhes no README, seção "Os três modos da voz e o botão Próximo".

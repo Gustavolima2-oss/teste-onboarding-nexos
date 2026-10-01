@@ -43,10 +43,12 @@ const LAST = IDS.length - 1;
 const ACTION_STEP = IDS.indexOf('conversas');
 const PIN = '[data-coach="fav-conversas"]';
 /**
- * Foco na chegada: o pin na etapa 3; nas demais, o próprio tooltip (o "Próximo" ainda está
- * bloqueado pelo loader e recebe o foco quando é liberado).
+ * Foco na chegada: o pin na etapa 3. Nas demais, no modo com voz, o próprio tooltip (o
+ * "Próximo" está desativado durante a fala e recebe o foco no fim); no modo texto, o
+ * "Próximo" (ativo desde a entrada).
  */
-const focusFor = (i) => (i === ACTION_STEP ? 'tool-card-pin' : 'coach-tooltip');
+const focusFor = (i, text = false) =>
+  i === ACTION_STEP ? 'tool-card-pin' : text ? 'coach-next' : 'coach-tooltip';
 let failures = 0;
 const results = {};
 const check = (label, ok, extra = '') => {
@@ -106,14 +108,14 @@ const ready = (page, id) =>
   );
 const state = (page) => page.evaluate(() => document.documentElement.dataset.coachState);
 /**
- * Leva o loader da etapa ao fim agora (voice.skip: fala ou timer) e espera o "Próximo"
- * ser liberado. No modo com voz, o avanço automático vem 400 ms depois.
+ * Garante o "Próximo" liberado: no modo com voz, leva a fala ao fim agora (voice.skip; o
+ * avanço automático vem 400 ms depois); nos modos texto e armado, ele já está ativo.
  */
 const unlock = async (page) => {
   await page.evaluate(() => window.__nexo.voice.skip());
   await page.waitForFunction(() => !window.__nexo.coach.isNextLocked, null, { timeout: 10000 });
 };
-/** Modo texto desde o início (dev): sem avanço automático, determinístico para navegar. */
+/** Modo texto desde o início (dev): "Próximo" sempre ativo, sem avanço automático. */
 const TEXT = 'voice=off&';
 
 // Gravador por quadro (antes do app rodar).
@@ -459,8 +461,8 @@ const recorder = () => {
     });
   for (let i = 1; i <= IDS.length; i++) {
     const { page: p, context: c, errors: e } = await newPage();
-    // Modo texto: o loader corre devagar (≥ 6 s) e nada avança sozinho.
-    await p.goto(`${base}?${TEXT}onboarding=reset&step=${i}`);
+    // Modo com voz: a fala segue tocando (nenhuma fala termina em menos de ~1,9 s).
+    await p.goto(`${base}?onboarding=reset&step=${i}`);
     await ready(p, IDS[i - 1]);
     const before = await escSnap(p);
     const ev = await pressEsc(p);
@@ -476,10 +478,11 @@ const recorder = () => {
       after.route === before.route &&
       after.voice === before.voice &&
       after.mode === before.mode &&
-      // O loader segue correndo.
+      // A fala segue tocando.
+      after.voice &&
       after.progress > before.progress;
     check(
-      `Esc na etapa ${i} não faz nada (mesma etapa, overlay, timer seguindo; sem padrão nem outros listeners)`,
+      `Esc na etapa ${i} não faz nada (mesma etapa, overlay, fala seguindo; sem padrão nem outros listeners)`,
       same && ev.prevented && ev.escSeen === 0 && ev.otherSeen === 2 && e.length === 0,
       JSON.stringify({ before, after, ev, e }),
     );
@@ -699,6 +702,33 @@ const recorder = () => {
     tip: document.querySelector('.coach-action-tip').hidden,
   }));
   check('etapa 3: o clique no pin para o destaque e esconde o balão', !c.pulsing && c.tip);
+  // O pin avança em qualquer modo: com voz (acima, no meio da fala), texto e armado.
+  const pinAdvances = async (url, init) => {
+    const { page: q, context: cq } = await newPage();
+    if (init) await q.addInitScript(init);
+    await q.goto(url);
+    await ready(q, 'conversas');
+    const kind = await q.evaluate(() => window.__nexo.voice.currentKind);
+    await q.click(PIN);
+    const ok = await q
+      .waitForFunction(() => document.documentElement.dataset.coachStep === 'favoritas', null, {
+        timeout: 4000,
+      })
+      .then(() => true)
+      .catch(() => false);
+    await cq.close();
+    return { kind, ok };
+  };
+  const pText = await pinAdvances(`${base}?${TEXT}onboarding=reset&step=3#/ferramentas`);
+  const pArmed = await pinAdvances(`${base}?onboarding=reset&step=3#/ferramentas`, () => {
+    HTMLMediaElement.prototype.play = () =>
+      Promise.reject(new DOMException('bloqueado', 'NotAllowedError'));
+  });
+  check(
+    'etapa 3: clicar no pin avança também nos modos texto e armado',
+    pText.kind === 'text' && pText.ok && pArmed.kind === 'armed' && pArmed.ok,
+    JSON.stringify({ pText, pArmed }),
+  );
   check('etapa 3 (destaque e prévia): sem erros', errors.length === 0, errors.join(' | '));
   await context.close();
 
@@ -793,10 +823,10 @@ const recorder = () => {
       s.favItems === (favExpected ? 1 : 0) &&
       s.backHidden === (i === 0) &&
       s.backDisabled === (i === 0) &&
-      // Chegada: "Próximo" bloqueado até o loader completar (e sempre, na etapa de ação).
-      s.nextDisabled &&
+      // Modo texto: "Próximo" ativo desde a chegada (só a etapa de ação não tem botão).
+      s.nextDisabled === (i === ACTION_STEP) &&
       s.tipOpacity === 1 &&
-      s.focus?.split(' ')[0] === focusFor(i) &&
+      s.focus?.split(' ')[0] === focusFor(i, true) &&
       s.nexoOpacity === 1 &&
       s.nexoOff < 1 &&
       // Mensagem do Waz: só a partir da última etapa (na Home).
@@ -874,15 +904,16 @@ const recorder = () => {
     };
     requestAnimationFrame(tick);
   });
-  await page.goto(`${base}?${TEXT}onboarding=reset#/home`);
-  await ready(page, 'ferramentas');
+  // Modo com voz: durante a fala, clique no alvo, Enter e seta direita não avançam.
   const sel = '[data-coach="nav-ferramentas"]';
-  // Antes do loader completar: clique no alvo, Enter e seta direita não avançam.
-  await page.click(sel);
-  await page.keyboard.press('Enter');
-  await page.keyboard.press('ArrowRight');
-  await page.waitForTimeout(400);
-  const locked = await page.evaluate(() => ({
+  const { page: pv, context: cv } = await newPage();
+  await pv.goto(`${base}?onboarding=reset#/home`);
+  await ready(pv, 'ferramentas');
+  await pv.click(sel);
+  await pv.keyboard.press('Enter');
+  await pv.keyboard.press('ArrowRight');
+  await pv.waitForTimeout(400);
+  const locked = await pv.evaluate(() => ({
     step: document.documentElement.dataset.coachStep,
     state: document.documentElement.dataset.coachState,
     next: document.querySelector('.coach-next').disabled,
@@ -890,7 +921,7 @@ const recorder = () => {
     opacity: Number(getComputedStyle(document.querySelector('.coach-next')).opacity),
   }));
   check(
-    'loader enchendo: "Próximo" desativado (disabled, aria-disabled, esmaecido); alvo, Enter e → não avançam',
+    'durante a fala: "Próximo" desativado (disabled, aria-disabled, esmaecido); alvo, Enter e → não avançam',
     locked.step === 'ferramentas' &&
       locked.state === 'ready' &&
       locked.next &&
@@ -898,6 +929,10 @@ const recorder = () => {
       locked.opacity < 0.6,
     JSON.stringify(locked),
   );
+  await cv.close();
+  // O resto da seção no modo texto (alvo e "Próximo" ativos desde a entrada).
+  await page.goto(`${base}?${TEXT}onboarding=reset#/home`);
+  await ready(page, 'ferramentas');
   const look = await page.evaluate((sel) => {
     const el = document.querySelector(sel);
     return { cursor: getComputedStyle(el).cursor, advance: el.hasAttribute('data-coach-advance') };
@@ -982,39 +1017,72 @@ const recorder = () => {
   await context.close();
 }
 
-// ---------- 8. Voz por padrão; loader libera o "Próximo"; pausa → modo texto ----------
+// ---------- 8. Modos: com voz (padrão), texto e voz armada; o "Próximo" segue o modo ----------
 {
   const manifest = JSON.parse(
     readFileSync(new URL('../src/voice/voiceManifest.json', import.meta.url)),
   );
   const VOICE_IDS = Object.keys(manifest);
-  // Timer do modo texto: max(duração × 2,5; 6 s) (SILENT_TIMER_FACTOR / SILENT_TIMER_MIN_MS).
-  const timerS = (vid) => Math.max(manifest[vid].duration * 2.5, 6);
-  const snap = (p) =>
-    p.evaluate(() => {
-      const v = window.__nexo.voice;
-      const next = document.querySelector('.coach-next');
-      return {
-        step: document.documentElement.dataset.coachStep,
-        voice: v.isVoice,
-        state: v.state,
-        id: v.currentId,
-        src: v.element?.src ?? '',
-        audioPaused: v.element ? v.element.paused : true,
-        spans: document.querySelectorAll('.coach-say-word').length,
-        spoken: document.querySelectorAll('.coach-say-word.is-spoken').length,
-        progress: v.lastFrame?.progress ?? 0,
-        icon: document.querySelector('.coach-audio').dataset.voice,
-        pressed: document.querySelector('.coach-audio').getAttribute('aria-pressed'),
-        label: document.querySelector('.coach-audio').getAttribute('aria-label'),
-        audioDisabled: document.querySelector('.coach-audio').disabled,
-        backDisabled: document.querySelector('.coach-back').disabled,
-        nextDisabled: next.disabled,
-        face: window.__nexo.nexo.debugStage?.face.current,
-        t: v.lastFrame?.t ?? 0,
-      };
-    });
-  // Boca x palavra ativa, conferida DEPOIS do tick da voz, no mesmo quadro.
+  /** Estado lido da página, de uma vez (o mesmo quadro). */
+  const snapFn = () => {
+    const v = window.__nexo.voice;
+    const next = document.querySelector('.coach-next');
+    const ring = document.querySelector('.coach-ring path');
+    const audio = document.querySelector('.coach-audio');
+    return {
+      step: document.documentElement.dataset.coachStep,
+      state: document.documentElement.dataset.coachState,
+      kind: v.currentKind,
+      mode: v.state,
+      audioPaused: v.element ? v.element.paused : true,
+      src: v.element?.src ?? '',
+      spans: document.querySelectorAll('.coach-say-word').length,
+      spoken: document.querySelectorAll('.coach-say-word.is-spoken').length,
+      progress: v.lastFrame?.progress ?? 0,
+      // Borda de progresso visível: dasharray com comprimento > 0 (vem como "15.6px, 100px").
+      ring: (parseFloat(ring.style.strokeDasharray) || 0) > 0,
+      icon: audio.dataset.voice,
+      iconAnim: getComputedStyle(audio).animationName,
+      label: audio.getAttribute('aria-label'),
+      next: next.disabled ? 'off' : 'on',
+      nextAria: next.getAttribute('aria-disabled'),
+      nextOpacity: Number(getComputedStyle(next).opacity),
+      back: document.querySelector('.coach-back').disabled ? 'off' : 'on',
+      audioBtn: audio.disabled ? 'off' : 'on',
+      face: window.__nexo.nexo.debugStage?.face.current,
+      t: v.lastFrame?.t ?? 0,
+    };
+  };
+  const snap = (p) => p.evaluate(snapFn);
+  const playing = (p) =>
+    p.waitForFunction(() => !window.__nexo.voice.element?.paused, null, { timeout: 6000 });
+  /** Linha do tempo de uma etapa: fim da fala (botão ativo) e início da seguinte. */
+  const timeline = (p, id, nextId, maxMs) =>
+    p.evaluate(
+      ({ id, nextId, maxMs }) =>
+        new Promise((res) => {
+          const r = { ready: -1, unlocked: -1, next: -1, enabledEarly: false };
+          const t0 = performance.now();
+          const f = () => {
+            const d = document.documentElement.dataset;
+            const t = performance.now();
+            const btn = document.querySelector('.coach-next');
+            if (r.ready < 0 && d.coachStep === id && d.coachState === 'ready') r.ready = t;
+            if (r.ready >= 0 && r.unlocked < 0 && d.coachStep === id) {
+              if (!btn.disabled) r.unlocked = t;
+            }
+            if (nextId && d.coachStep === nextId) r.next = t;
+            if ((nextId ? r.next >= 0 : r.unlocked >= 0) || t - t0 > maxMs) {
+              res({
+                unlockMs: r.unlocked >= 0 ? Math.round(r.unlocked - r.ready) : -1,
+                nextMs: r.next >= 0 ? Math.round(r.next - r.ready) : -1,
+              });
+            } else requestAnimationFrame(f);
+          };
+          f();
+        }),
+      { id, nextId, maxMs },
+    );
   const hookMouth = (p) =>
     p.evaluate(() => {
       window.__mouth = { frames: 0, bad: 0, talk: 0, silentTalk: 0 };
@@ -1029,268 +1097,334 @@ const recorder = () => {
         if (talking !== (f.voice && f.speaking)) window.__mouth.bad++;
       });
     });
-  /**
-   * Linha do tempo de uma etapa, medida no próprio quadro: quando fica "ready", quando o
-   * "Próximo" é liberado e quando a etapa seguinte começa; e se o botão ficou desativado
-   * o tempo todo antes de liberar.
-   */
-  const timeline = (p, id, nextId, maxMs) =>
-    p.evaluate(
-      ({ id, nextId, maxMs }) =>
-        new Promise((res) => {
-          const r = { ready: -1, unlocked: -1, next: -1, enabledEarly: false };
-          const t0 = performance.now();
-          const f = () => {
-            const d = document.documentElement.dataset;
-            const t = performance.now();
-            const btn = document.querySelector('.coach-next');
-            if (r.ready < 0 && d.coachStep === id && d.coachState === 'ready') r.ready = t;
-            if (r.ready >= 0 && r.unlocked < 0) {
-              if (!window.__nexo.coach.isNextLocked) r.unlocked = t;
-              else if (btn && !btn.disabled && d.coachStep === id) r.enabledEarly = true;
-            }
-            if (nextId && d.coachStep === nextId) r.next = t;
-            if ((nextId ? r.next >= 0 : r.unlocked >= 0) || t - t0 > maxMs) {
-              res({
-                unlockMs: r.unlocked >= 0 ? Math.round(r.unlocked - r.ready) : -1,
-                nextMs: r.next >= 0 ? Math.round(r.next - r.ready) : -1,
-                enabledEarly: r.enabledEarly,
-              });
-            } else requestAnimationFrame(f);
-          };
-          f();
-        }),
-      { id, nextId, maxMs },
-    );
 
-  // (1) Voz por padrão: a etapa fala assim que o tooltip entra; grifo acompanhando; o
-  // "Próximo" fica desativado durante a fala e é liberado no fim; avanço sozinho 400 ms
-  // depois (etapas 1 e 2).
+  // (1) Modo com voz (padrão): fala ao entrar, grifo, borda acompanhando o áudio, "Próximo"
+  // desativado durante a fala e avanço sozinho no fim (etapas 1 e 2).
   {
     const { page: p, context: c, errors: e } = await newPage();
     await p.goto(`${base}?onboarding=reset#/home`);
     await ready(p, IDS[0]);
     await hookMouth(p);
-    await p.waitForFunction(() => !window.__nexo.voice.element?.paused, null, { timeout: 5000 });
-    await p.waitForTimeout(300);
+    await playing(p);
+    await p.waitForTimeout(400);
     const s0 = await snap(p);
     check(
-      'voz por padrão: áudio da etapa tocando, grifo palavra a palavra, ícone de pausa, Próximo desativado',
-      s0.voice &&
+      'modo com voz: fala da etapa tocando, grifo (texto cinza acendendo), borda de progresso, ícone de pausa, Próximo desativado',
+      s0.kind === 'voice' &&
         !s0.audioPaused &&
         s0.src.endsWith(`audio/nexo/${VOICE_IDS[0]}.mp3`) &&
-        s0.spans === manifest[VOICE_IDS[0]].words.length &&
         s0.spoken < s0.spans &&
-        s0.progress > 0 &&
+        s0.ring &&
         s0.icon === 'playing' &&
-        s0.pressed === 'true' &&
         s0.label === 'Pausar' &&
-        s0.nextDisabled &&
-        !s0.audioDisabled,
+        s0.next === 'off' &&
+        s0.nextAria === 'true' &&
+        s0.audioBtn === 'on',
       JSON.stringify(s0),
     );
-    await c.close();
-
-    const { page: p2, context: c2, errors: e2 } = await newPage();
-    await p2.goto(`${base}?onboarding=reset#/home`);
     const lines = [];
-    for (let i = 0; i < 2; i++) {
-      const vid = VOICE_IDS[i];
-      const tl = await timeline(p2, IDS[i], IDS[i + 1], 20000);
-      lines.push({ step: i + 1, ...tl, dur: Math.round(manifest[vid].duration * 1000) });
-    }
+    // Etapa 1 já começou; mede a 1 a partir de agora (só o avanço) e a 2 inteira.
+    const t1 = await timeline(p, IDS[0], IDS[1], 15000);
+    lines.push({ step: 1, ...t1 });
+    const t2 = await timeline(p, IDS[1], IDS[2], 15000);
+    lines.push({ step: 2, ...t2, dur: Math.round(manifest[VOICE_IDS[1]].duration * 1000) });
     check(
-      'com voz: Próximo liberado no fim da fala e avanço automático ~400 ms depois (tolerância 350 ms)',
-      lines.every(
-        (l) =>
-          !l.enabledEarly &&
-          Math.abs(l.unlockMs - l.dur) < 350 &&
-          Math.abs(l.nextMs - l.unlockMs - 400) < 150,
-      ),
+      'modo com voz: Próximo ativado no fim da fala e avanço automático ~400 ms depois',
+      lines.every((l) => l.unlockMs > 0 && Math.abs(l.nextMs - l.unlockMs - 400) < 150) &&
+        Math.abs(lines[1].unlockMs - lines[1].dur) < 350,
       JSON.stringify(lines),
     );
+    // Etapa 3: no fim da fala, não avança.
+    await ready(p, IDS[2]);
+    await playing(p);
+    await p.evaluate(() => window.__nexo.voice.skip());
+    await p.waitForTimeout(1500);
+    const s3 = await snap(p);
     check(
-      'voz por padrão: sem erros',
-      e.length === 0 && e2.length === 0,
-      [...e, ...e2].join(' | '),
+      'modo com voz: na etapa 3 (pin) o fim da fala não avança',
+      s3.step === IDS[2] && s3.state === 'ready' && s3.mode === 'ended',
+      JSON.stringify(s3),
     );
-    await c2.close();
+    const mouth = await p.evaluate(() => window.__mouth);
+    check(
+      'boca: fala só com palavra ativa (no mesmo quadro)',
+      mouth.bad === 0 && mouth.talk > 0,
+      JSON.stringify(mouth),
+    );
+    check('modo com voz: sem erros', e.length === 0, e.join(' | '));
+    await c.close();
   }
 
-  // (2) Pausar durante a fala → modo texto: áudio para, texto todo branco, boca no padrão; o
-  // loader continua de onde estava, no ritmo do modo texto (proporcional ao que falta), e
-  // ao completar só ativa o botão (sem avançar). As etapas seguintes seguem no modo texto;
-  // o ícone religa a voz e a fala recomeça do início da etapa.
+  // (2) Modo texto: em todas as etapas (menos a 3, sem botão), o "Próximo" está ativo e
+  // sem borda desde o primeiro quadro do tooltip, e clicar avança na hora.
+  {
+    const { page: p, context: c, errors: e } = await newPage();
+    await p.goto(`${base}?${TEXT}onboarding=reset#/home`);
+    const rows = [];
+    for (let i = 0; i < IDS.length; i++) {
+      // Primeiro quadro com o tooltip visível desta etapa: estado do botão e da borda. (O
+      // tooltip anterior ainda sai depois que a etapa muda: espera ele sumir e o novo entrar.)
+      const first = await p.evaluate(
+        (id) =>
+          new Promise((res) => {
+            let gone = false; // na etapa 1 o tooltip começa oculto; nas outras, o antigo sai
+            const f = () => {
+              const tip = document.querySelector('.coach-tooltip');
+              const d = document.documentElement.dataset;
+              const visible = tip && !tip.hidden && Number(getComputedStyle(tip).opacity) > 0;
+              if (!visible) gone = true;
+              if (gone && d.coachStep === id && visible) {
+                const btn = document.querySelector('.coach-next');
+                const ring = parseFloat(
+                  document.querySelector('.coach-ring path').style.strokeDasharray,
+                );
+                res({
+                  next: btn.disabled ? 'off' : 'on',
+                  opacity: Number(getComputedStyle(btn).opacity),
+                  ring: (ring || 0) > 0,
+                  white:
+                    document.querySelectorAll('.coach-say-word.is-spoken').length ===
+                    document.querySelectorAll('.coach-say-word').length,
+                });
+              } else requestAnimationFrame(f);
+            };
+            f();
+          }),
+        IDS[i],
+      );
+      await ready(p, IDS[i]);
+      await p.waitForTimeout(150);
+      const s1 = await snap(p);
+      let advancedMs = -1;
+      if (i === ACTION_STEP) {
+        await p.click(PIN);
+      } else {
+        // Clica e mede quanto tempo até a transição começar.
+        advancedMs = await p.evaluate(() => {
+          const t0 = performance.now();
+          document.querySelector('.coach-next').click();
+          const st = document.documentElement.dataset.coachState;
+          return st === 'transition' || st === 'closing' ? Math.round(performance.now() - t0) : -1;
+        });
+      }
+      rows.push({ step: i + 1, first, kind: s1.kind, ring: s1.ring, next: s1.next, advancedMs });
+      if (i === LAST) break;
+    }
+    const bad = rows.filter(
+      (r, i) =>
+        r.kind !== 'text' ||
+        r.ring ||
+        r.first.ring ||
+        !r.first.white ||
+        (i === ACTION_STEP
+          ? r.next !== 'off'
+          : r.first.next !== 'on' || r.first.opacity !== 1 || r.next !== 'on' || r.advancedMs < 0),
+    );
+    check(
+      'modo texto: em todas as etapas, Próximo/Finalizar ativo (aparência normal) e sem borda desde a entrada do tooltip; clicar avança na hora',
+      bad.length === 0,
+      JSON.stringify(
+        bad.length ? bad : rows.map((r) => `${r.step}:${r.first.next}/${r.advancedMs}ms`),
+      ),
+    );
+    // Nunca há avanço automático: depois do último clique o tour encerrou; antes disso, nada
+    // avançou sozinho (todas as transições vieram dos cliques acima).
+    await p.waitForFunction(() => document.documentElement.dataset.coachState === 'closed', null, {
+      timeout: 10000,
+    });
+    check('modo texto: fluxo inteiro pelos cliques, sem erros', e.length === 0, e.join(' | '));
+    await c.close();
+
+    // Sem avanço automático no modo texto, mesmo esperando bem mais que qualquer fala.
+    const { page: q, context: cq } = await newPage();
+    await q.goto(`${base}?${TEXT}onboarding=reset&step=2#/ferramentas`);
+    await ready(q, IDS[1]);
+    await q.waitForTimeout(manifest[VOICE_IDS[1]].duration * 1000 + 1500);
+    const still = await snap(q);
+    check(
+      'modo texto: nunca avança sozinho',
+      still.step === IDS[1] && still.state === 'ready' && still.next === 'on',
+      JSON.stringify(still),
+    );
+    await cq.close();
+  }
+
+  // (3) Pausar no meio da fala: no mesmo instante, texto todo branco, botão ativo, sem borda
+  // e áudio parado. As seguintes seguem no modo texto. (4) Religar: fala do início, borda
+  // do zero, botão desativado.
   {
     const { page: p, context: c, errors: e } = await newPage();
     await p.goto(`${base}?onboarding=reset&step=2#/ferramentas`);
     await ready(p, IDS[1]);
     await hookMouth(p);
-    const vid = VOICE_IDS[1];
-    await p.waitForFunction(() => (window.__nexo.voice.lastFrame?.t ?? 0) > 1.4, null, {
+    await p.waitForFunction(() => (window.__nexo.voice.lastFrame?.t ?? 0) > 1.2, null, {
       timeout: 8000,
     });
-    const before = await snap(p);
-    await p.click('.coach-audio'); // pausa
-    const a = await snap(p);
-    await p.waitForTimeout(1000);
+    const instant = await p.evaluate((fn) => {
+      const read = new Function(`return (${fn})()`);
+      const before = read();
+      document.querySelector('.coach-audio').click(); // pausa (mesma tarefa)
+      return { before, after: read() };
+    }, snapFn.toString());
+    const { before, after } = instant;
+    check(
+      'pausar no meio da fala: no mesmo instante texto todo branco, Próximo ativo, sem borda, áudio parado',
+      before.kind === 'voice' &&
+        before.ring &&
+        before.next === 'off' &&
+        before.spoken < before.spans &&
+        after.kind === 'text' &&
+        after.spoken === after.spans &&
+        after.next === 'on' &&
+        !after.ring &&
+        after.audioPaused &&
+        after.icon === 'off',
+      JSON.stringify(instant),
+    );
+    await p.waitForTimeout(200);
     const b = await snap(p);
-    // Ritmo do modo texto: 1 s de relógio = 1 / timer do loader.
-    const rate = (b.progress - a.progress) / 1;
-    const expected = 1 / timerS(vid);
-    check(
-      'pausar: áudio parado, TODO o texto branco, boca no padrão, ícone do alto-falante',
-      a.audioPaused &&
-        !a.voice &&
-        a.spoken === a.spans &&
-        b.spoken === b.spans &&
-        b.face !== 'talk' &&
-        b.icon === 'off' &&
-        b.pressed === 'false' &&
-        b.label === 'Ouvir o Nexo' &&
-        before.spoken < before.spans,
-      JSON.stringify({ before: before.spoken, a, b }),
-    );
-    check(
-      'pausar: o loader continua de onde estava, no ritmo do modo texto, e o Próximo segue desativado',
-      Math.abs(a.progress - before.progress) < 0.05 &&
-        Math.abs(rate - expected) < expected * 0.25 &&
-        b.nextDisabled,
-      JSON.stringify({ before: before.progress, at: a.progress, rate, expected }),
-    );
-    // Completa (skip) → só ativa o botão; nenhum avanço automático.
-    await unlock(p);
-    await p.waitForTimeout(1500);
-    const done = await snap(p);
-    check(
-      'modo texto: loader completo ativa o Próximo e não avança sozinho',
-      done.step === IDS[1] && !done.nextDisabled && !done.voice,
-      JSON.stringify(done),
-    );
-    // Seguinte: continua no modo texto (sem áudio, texto branco), Próximo desativado.
+    check('pausar: a boca volta ao padrão', b.face !== 'talk', JSON.stringify(b));
+    // Seguinte: modo texto.
     await p.click('.coach-next');
     await ready(p, IDS[2]);
-    await p.waitForTimeout(500);
+    await p.waitForTimeout(300);
     const t3 = await snap(p);
     check(
-      'depois de pausar, a etapa seguinte entra no modo texto (texto branco, sem áudio, Próximo/pin só pelo usuário)',
-      !t3.voice && t3.audioPaused && t3.spoken === t3.spans && t3.icon === 'off' && t3.progress > 0,
+      'depois de pausar, a etapa seguinte entra no modo texto (sem áudio, texto branco, sem borda)',
+      t3.kind === 'text' &&
+        t3.audioPaused &&
+        t3.spoken === t3.spans &&
+        !t3.ring &&
+        t3.icon === 'off',
       JSON.stringify(t3),
     );
-    // Etapa 3 → 4 pelo pin; na 4, o ícone religa a voz e a fala recomeça do início.
+    // Etapa 3 → 4 pelo pin (modo texto); na 4, o ícone religa a voz do início.
     await p.click(PIN);
     await ready(p, IDS[3]);
-    await p.waitForTimeout(600);
+    await p.waitForTimeout(300);
     const t4 = await snap(p);
     await p.click('.coach-audio');
-    await p.waitForFunction(() => !window.__nexo.voice.element?.paused, null, { timeout: 5000 });
+    await playing(p);
+    await p.waitForTimeout(120);
     const again = await snap(p);
     check(
-      'ícone no modo texto: religa a voz e recomeça a fala do início da etapa',
-      !t4.voice &&
-        again.voice &&
+      'religar a voz: fala do início da etapa, texto cinza, borda do zero e Próximo desativado',
+      t4.kind === 'text' &&
+        t4.next === 'on' &&
+        again.kind === 'voice' &&
         !again.audioPaused &&
         again.t < 0.5 &&
+        again.progress < 0.25 &&
         again.spoken < again.spans &&
+        again.next === 'off' &&
         again.icon === 'playing' &&
         again.src.endsWith(`${VOICE_IDS[3]}.mp3`),
       JSON.stringify({ t4, again }),
     );
-    // Com a voz de volta, o fim da fala avança sozinho de novo.
     const tl = await timeline(p, IDS[3], IDS[4], 12000);
     check('voz religada: o fim da fala volta a avançar sozinho', tl.nextMs > 0, JSON.stringify(tl));
     await ready(p, IDS[4]);
+    await playing(p);
     const t5 = await snap(p);
-    check('voz religada: a etapa seguinte já começa com voz', t5.voice, JSON.stringify(t5));
-    await p.waitForTimeout(500);
+    check(
+      'voz religada: a etapa seguinte já começa falando',
+      t5.kind === 'voice',
+      JSON.stringify(t5),
+    );
     const mouth = await p.evaluate(() => window.__mouth);
     check(
-      'boca: fala só com palavra ativa (mesmo quadro) e fica no padrão em todo o modo texto',
-      mouth.bad === 0 && mouth.silentTalk === 0 && mouth.talk > 0 && mouth.frames > 200,
+      'boca: no padrão em todo o modo texto e só com palavra ativa na voz',
+      mouth.bad === 0 && mouth.silentTalk === 0 && mouth.talk > 0,
       JSON.stringify(mouth),
     );
-    check('pausa/modo texto: sem erros', e.length === 0, e.join(' | '));
+    check('pausar/religar: sem erros', e.length === 0, e.join(' | '));
     await c.close();
   }
 
-  // (3) Etapa 3 com voz: o pin no meio da fala interrompe o áudio e avança.
+  // (5) Autoplay bloqueado: voz armada (texto branco, ícone pulsando, Próximo ativo e sem
+  // borda); o primeiro clique em qualquer lugar inicia a fala da etapa; o primeiro clique no
+  // Próximo avança e a seguinte já fala; o primeiro clique no ícone liga a fala.
+  const blocked = () => {
+    const play = HTMLMediaElement.prototype.play;
+    let interacted = false;
+    document.addEventListener('pointerdown', () => (interacted = true), true);
+    document.addEventListener('keydown', () => (interacted = true), true);
+    HTMLMediaElement.prototype.play = function () {
+      if (!interacted) return Promise.reject(new DOMException('bloqueado', 'NotAllowedError'));
+      return play.call(this);
+    };
+  };
   {
     const { page: p, context: c, errors: e } = await newPage();
-    await p.goto(`${base}?onboarding=reset&step=3#/ferramentas`);
-    await ready(p, IDS[2]);
-    await p.waitForFunction(() => !window.__nexo.voice.element?.paused, null, { timeout: 5000 });
-    await p.waitForTimeout(400);
-    const el3 = await p.evaluateHandle(() => window.__nexo.voice.element);
-    await p.click(PIN);
-    await p.waitForTimeout(50);
-    const pinMid = await p.evaluate((el) => ({ paused: el.paused }), el3);
-    const advanced = await p
-      .waitForFunction((id) => document.documentElement.dataset.coachStep === id, IDS[3], {
-        timeout: 3000,
-      })
-      .then(() => true)
-      .catch(() => false);
-    check(
-      'etapa 3 com voz: clicar no pin no meio da fala interrompe o áudio e avança',
-      pinMid.paused && advanced && e.length === 0,
-      JSON.stringify({ ...pinMid, advanced, e }),
-    );
-    // Na 4 (falando), clicar no Próximo desativado não faz nada.
-    await ready(p, IDS[3]);
-    await p.click('.coach-next', { force: true });
-    await p.waitForTimeout(300);
-    const s4 = await snap(p);
-    check(
-      'Próximo desativado durante a fala: o clique não avança nem interrompe',
-      s4.step === IDS[3] && s4.voice && !s4.audioPaused && s4.nextDisabled && !s4.backDisabled,
-      JSON.stringify(s4),
-    );
-    await c.close();
-  }
-
-  // (4) Autoplay bloqueado (primeiro acesso, sem interação): a etapa roda no modo texto sem
-  // erro; o primeiro clique libera o áudio e a etapa seguinte volta a falar.
-  {
-    const { page: p, context: c, errors: e } = await newPage();
-    await p.addInitScript(() => {
-      const play = HTMLMediaElement.prototype.play;
-      let interacted = false;
-      document.addEventListener('pointerdown', () => (interacted = true), true);
-      HTMLMediaElement.prototype.play = function () {
-        if (!interacted) return Promise.reject(new DOMException('bloqueado', 'NotAllowedError'));
-        return play.call(this);
-      };
-    });
+    await p.addInitScript(blocked);
     await p.goto(`${base}?onboarding=reset#/home`);
     await ready(p, IDS[0]);
-    await p.waitForTimeout(800);
-    const s1 = await snap(p);
+    await p.waitForTimeout(500);
+    const a = await snap(p);
     check(
-      'autoplay bloqueado: a etapa roda no modo texto (texto branco, loader, Próximo desativado), sem erro',
-      !s1.voice &&
-        s1.spoken === s1.spans &&
-        s1.icon === 'off' &&
-        s1.progress > 0 &&
-        s1.nextDisabled &&
+      'autoplay bloqueado: voz armada (texto branco, ícone pulsando), Próximo ativo e sem borda, sem erro',
+      a.kind === 'armed' &&
+        a.spoken === a.spans &&
+        a.icon === 'armed' &&
+        a.iconAnim === 'coach-audio-armed' &&
+        a.next === 'on' &&
+        a.nextOpacity === 1 &&
+        !a.ring &&
         e.length === 0,
-      JSON.stringify({ s1, e }),
+      JSON.stringify(a),
     );
-    await unlock(p);
-    await p.waitForTimeout(1200);
-    const still = await snap(p);
+    // Primeiro clique em qualquer lugar (fora de controles): a fala da etapa começa do início.
+    await p.mouse.click(1300, 820);
+    await playing(p);
+    const b = await snap(p);
     check(
-      'autoplay bloqueado: loader completo só ativa o botão (sem avanço automático)',
-      still.step === IDS[0] && !still.nextDisabled,
-      JSON.stringify(still),
+      'autoplay bloqueado: o primeiro clique em qualquer lugar inicia a fala da etapa atual',
+      b.kind === 'voice' &&
+        b.step === IDS[0] &&
+        !b.audioPaused &&
+        b.icon === 'playing' &&
+        b.next === 'off' &&
+        b.src.endsWith(`${VOICE_IDS[0]}.mp3`),
+      JSON.stringify(b),
     );
-    await p.click('.coach-next'); // primeiro clique: libera o áudio
+    await c.close();
+  }
+  {
+    const { page: p, context: c, errors: e } = await newPage();
+    await p.addInitScript(blocked);
+    await p.goto(`${base}?onboarding=reset#/home`);
+    await ready(p, IDS[0]);
+    await p.waitForTimeout(500);
+    await p.click('.coach-next'); // primeiro clique: no Próximo
     await ready(p, IDS[1]);
-    await p.waitForFunction(() => !window.__nexo.voice.element?.paused, null, { timeout: 5000 });
+    await playing(p);
     const s2 = await snap(p);
     check(
-      'depois do primeiro clique, a etapa seguinte volta ao modo com voz',
-      s2.voice && !s2.audioPaused && s2.icon === 'playing' && e.length === 0,
-      JSON.stringify({ s2, e }),
+      'autoplay bloqueado: o primeiro clique no Próximo avança e a etapa seguinte já fala',
+      s2.kind === 'voice' && !s2.audioPaused && s2.icon === 'playing' && e.length === 0,
+      JSON.stringify(s2),
+    );
+    await c.close();
+  }
+  {
+    const { page: p, context: c, errors: e } = await newPage();
+    await p.addInitScript(blocked);
+    await p.goto(`${base}?onboarding=reset&step=2#/ferramentas`);
+    await ready(p, IDS[1]);
+    await p.waitForTimeout(500);
+    // Primeiro clique: no ícone (pulsando; force: o Playwright espera elementos parados).
+    await p.click('.coach-audio', { force: true });
+    await playing(p);
+    await p.waitForTimeout(300);
+    const s = await snap(p);
+    check(
+      'autoplay bloqueado: o primeiro clique no ícone liga a fala (não pausa)',
+      s.kind === 'voice' &&
+        s.step === IDS[1] &&
+        !s.audioPaused &&
+        s.icon === 'playing' &&
+        e.length === 0,
+      JSON.stringify(s),
     );
     await c.close();
   }

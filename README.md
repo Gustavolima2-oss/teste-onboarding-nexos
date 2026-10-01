@@ -10,18 +10,29 @@ Protótipo do onboarding do produto. O mascote 3D **Nexo** guia o usuário por *
 
 | Ação                      | Como                                                                                                                                                                                                                |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Avançar                   | Botão **Próximo**, **→** ou **Enter**, depois que o anel do botão completa                                                                                                                                          |
+| Avançar                   | Botão **Próximo**, **→** ou **Enter**: no modo com voz, depois que a fala termina; nos modos texto e armado, a qualquer momento                                                                                     |
 | Voltar                    | Botão **Voltar**, ou **←** (a partir da etapa 2)                                                                                                                                                                    |
 | Avançar pelo item marcado | Nas etapas 1, 4 e 5 o item destacado é clicável: clicar nele avança, como no produto real. Na etapa 3 não há "Próximo": avance **favoritando** pelo pin do card Conversas (clique, ou Enter/Espaço com o foco nele) |
 | Reiniciar do começo       | **R**                                                                                                                                                                                                               |
 | Ir direto a uma etapa     | **1** a **9**                                                                                                                                                                                                       |
-| Pausar / religar a voz    | Ícone no tooltip, ou **Espaço**: pausar leva ao modo texto (texto todo branco, sem avanço automático); religar recomeça a fala do início da etapa                                                                   |
+| Pausar / religar a voz    | Ícone no tooltip, ou **Espaço**: pausar leva ao modo texto; clicar de novo religa a voz e recomeça a fala do início da etapa                                                                                        |
 
 O **Tab** circula dentro do tooltip ("Voltar", áudio e "Próximo"). Com `prefers-reduced-motion`, o Nexo não voa: ele troca de lugar com um fade.
 
-**Voz (padrão) e modo texto.** O tour começa **com voz**: cada etapa fala quando o tooltip termina de entrar, as palavras acendem uma a uma e o anel em gradiente em volta do "Próximo" acompanha o áudio. O **"Próximo" fica desativado** (`disabled`, `aria-disabled="true"`, esmaecido) enquanto o anel enche e acende quando ele completa; o clique no item marcado (etapas 1, 4 e 5), o **Enter** e a **→** seguem a mesma regra. "Voltar" e o ícone de som ficam sempre ativos. No fim da fala, o tour avança sozinho 400 ms depois; na última etapa, o "Finalizar" só é ativado.
+### Os três modos da voz e o botão "Próximo"
 
-**Pausar** (clicar no ícone durante a fala) leva ao **modo texto**: o áudio para, o texto inteiro fica branco e a boca volta ao padrão. O anel continua de onde estava, no ritmo de leitura (duração da fala × 2,5, no mínimo 6 s, proporcional ao que falta) e, ao completar, só ativa o botão: no modo texto nada avança sozinho. As etapas seguintes continuam no modo texto até o usuário clicar no ícone de novo, o que religa a voz e recomeça a fala da etapa atual. Se o navegador bloquear o áudio (primeiro acesso, sem interação), a etapa roda no modo texto, sem erro; o primeiro clique libera o áudio e a etapa seguinte volta a falar. Com a aba em segundo plano, a fala e o loader pausam.
+O estado do "Próximo" vem **só do modo** da etapa; não há timer nenhum.
+
+| Modo                 | Quando                                                      | Texto                              | Ícone de som                     | "Próximo"                                                                              | Avanço automático                                                                                    |
+| -------------------- | ----------------------------------------------------------- | ---------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **Com voz** (padrão) | O tour começa assim; cada etapa fala quando o tooltip entra | Cinza, acendendo palavra a palavra | Pausa (dois tracinhos)           | Desativado durante a fala, com a borda de progresso acompanhando o áudio; ativo no fim | Sim, 400 ms depois do fim da fala; nunca na etapa 3 (pin) nem na última (o "Finalizar" só é ativado) |
+| **Texto**            | O usuário pausou a voz (clique no ícone durante a fala)     | Todo branco, na hora               | Alto-falante                     | Ativo desde a entrada do tooltip, aparência normal, sem borda                          | Nunca                                                                                                |
+| **Armado**           | O navegador bloqueou o autoplay                             | Todo branco                        | Alto-falante pulsando suavemente | Ativo, sem borda (como no modo texto)                                                  | Nunca, até a voz começar                                                                             |
+
+- **Pausar** no meio da fala passa ao modo texto no mesmo instante: o áudio para, o texto fica todo branco, a boca do Nexo volta ao padrão, a borda some e o botão é ativado. As etapas seguintes continuam no modo texto até o usuário clicar no ícone de novo, o que religa a voz e recomeça a fala da etapa atual (texto cinza, borda do zero, botão desativado).
+- **Cliques no alvo** (ícones das etapas 1, 4 e 5), **Enter** e **→** seguem o botão: no modo com voz, só depois que a fala termina; nos modos texto e armado, a qualquer momento. O **pin da etapa 3** funciona a qualquer momento, em qualquer modo. **"Voltar"** e o **ícone de som** ficam sempre ativos.
+- **Bloqueio de autoplay dos navegadores:** Chrome, Safari e Firefox só deixam uma página tocar som depois de alguma interação do usuário com ela. Por isso, num primeiro acesso a etapa 1 tenta `audio.play()` e quase sempre recebe a recusa. Nesse caso a voz fica **armada**: o texto aparece inteiro, o ícone pulsa e o "Próximo" fica ativo. No primeiro clique ou tecla em qualquer lugar da página (`pointerdown` e `keydown` no `document`, removidos no primeiro disparo), o áudio é liberado e a etapa atual fala do início. Se esse primeiro clique foi no "Próximo", o tour avança normalmente e a etapa seguinte já começa falando; se foi no ícone de som, ele liga a fala (não pausa). Quem chega à página por um clique em outra página do mesmo site, ou já interagiu com ela, ouve a voz desde a etapa 1.
+- Com a aba em segundo plano, a fala pausa; ao voltar, continua.
 
 Também dá para abrir numa etapa pelo link: `…/teste-onboarding-nexos/?step=4`.
 
@@ -71,17 +82,17 @@ python3 nexo-voice/build_voices.py       # a partir da raiz do app
 ```
 
 - `robotize.py` aplica o filtro aprovado (+3 semitons com o timbre preservado, via rubberband, e 5% de vocoder; parâmetros intocados, duração preservada). `align.py` marca cada palavra com o faster-whisper (modelo `small`), alinhando ao texto exibido.
-- O player ([src/voice/voice.ts](src/voice/voice.ts)) é o relógio de cada etapa, em dois modos: **timer** (modo texto, `SILENT_TIMER_FACTOR` = 2,5 e `SILENT_TIMER_MIN_MS` = 6000) e **voz** (lê `audio.currentTime` a cada quadro e publica palavras já ditas, progresso do anel, palavra ativa e volume do `AnalyserNode`, em 5 degraus; 3 com movimento reduzido). Sem palavra ativa, e durante todo o modo sem voz, a boca fica no sorriso, trocando no mesmo quadro.
-- Se o `play()` for rejeitado (autoplay), a etapa segue no modo texto (nota informativa no console, sem erro) e o fluxo continua; a etapa seguinte tenta a voz de novo.
-- Dev: `?voice=off` abre o tour no modo texto; `window.__nexo.voice.skip()` leva o loader da etapa ao fim (testes).
+- O player ([src/voice/voice.ts](src/voice/voice.ts)) conduz cada etapa nos três modos (`voice`, `text`, `armed`). No modo com voz, ele lê `audio.currentTime` a cada quadro e publica palavras já ditas, progresso da borda, palavra ativa e volume do `AnalyserNode` (5 degraus; 3 com movimento reduzido). Nos modos texto e armado não há relógio: o texto vem inteiro e a borda fica em zero. Sem palavra ativa, e em todo o modo texto ou armado, a boca fica no sorriso, trocando no mesmo quadro.
+- Se o `play()` for rejeitado, a etapa fica com a voz armada (nota informativa no console, sem erro).
+- Dev: `?voice=off` abre o tour no modo texto; `window.__nexo.voice.skip()` leva a fala da etapa ao fim (testes).
 - Para trocar um texto: gere a voz no Magnific com a mesma configuração (`note` em `nexo-voice/voices.json`), atualize o item e rode o build de novo. O texto do tooltip vem do manifesto.
 
 **Decisões**
 
-- **Progresso:** o Figma não preenche o botão; ele desenha um anel em gradiente (`#E49876` → `#FFC846` 44% → `#FFD8C7`, da esquerda para a direita) colado à pílula do "Próximo". O anel começa no meio da lateral esquerda e cresce em sentido horário, de 0 a 100% ao longo do áudio ou do timer. Religar a voz reinicia o anel do zero (o botão já liberado continua liberado).
-- **"Próximo" desativado:** o Figma (2631:3475) mostra a pílula branca normal com o anel enchendo; não há variante "disabled" no arquivo. Aqui a pílula fica a 50% de opacidade, sem hover, e acende em 200 ms quando o anel completa. Enquanto ela está desativada, o foco fica no próprio tooltip e passa para o botão quando ele acende.
+- **Progresso:** o Figma não preenche o botão; ele desenha um anel em gradiente (`#E49876` → `#FFC846` 44% → `#FFD8C7`, da esquerda para a direita) colado à pílula do "Próximo". O anel começa no meio da lateral esquerda e cresce em sentido horário, de 0 a 100% ao longo do áudio. Só existe no modo com voz; religar a voz reinicia o anel do zero.
+- **"Próximo" desativado (durante a fala):** o Figma (2631:3475) mostra a pílula branca normal com o anel enchendo; não há variante "disabled" no arquivo. Aqui a pílula fica a 50% de opacidade, sem hover, e acende em 200 ms no fim da fala. Enquanto ela está desativada, o foco fica no próprio tooltip e passa para o botão quando ele acende.
 - **Bolinhas:** 9, acumulativas (o Figma ainda mostra 7, e nenhuma na última etapa).
-- **Ícone:** mostra a ação do clique. Alto-falante do Figma no modo texto ("Ouvir o Nexo"); `Pause` do Phosphor, no mesmo tamanho e cor, enquanto a voz toca ("Pausar", `aria-pressed="true"`). Troca por crossfade de 120 ms.
+- **Ícone:** mostra a ação do clique. Alto-falante do Figma nos modos texto e armado ("Ouvir o Nexo"; no armado, pulsando a cada 1,6 s, parado com `prefers-reduced-motion`); `Pause` do Phosphor, no mesmo tamanho e cor, enquanto a voz toca ("Pausar", `aria-pressed="true"`). Troca por crossfade de 120 ms.
 - **Espaço** com o foco no tooltip pausa e religa a voz.
 - **Etapas 6, 7 e 8** usam o tooltip só de texto (sem vídeo).
 - **Última etapa na Home** (Figma 2631:3475): a linha do Waz em "Seu time" ganha a mensagem "Oi aqui o Waz! Estou animado em me juntar ao seu time!" e a bolinha de não lida, entrando com fade e deslize de 6 px assim que a Home aparece. A linha (card branco de 832×96) é o alvo destacado; o tooltip fica abaixo dela, alinhado à direita, com o Nexo ao lado. No "Finalizar", o tooltip sai, o Nexo voa para fora e o overlay some: a Home fica como o frame 2631:3583, com a mensagem. Voltar leva à etapa 8, em Seu negócio.
@@ -89,10 +100,10 @@ python3 nexo-voice/build_voices.py       # a partir da raiz do app
 - **Etapa 1** não tem "Voltar" (fica invisível, ocupando o lugar); a **última etapa** usa "Finalizar" (89×40).
 - **Emoji** solto (🧠, etapa 6) acende junto com a palavra anterior e não mexe a boca.
 - **Web Speech:** a narração sintetizada saiu do fluxo; `NexoGuide.talk()` continua na API por compatibilidade.
-- **Etapa 3 (Conversas) avança favoritando** (`advanceOn: 'action'`): sem "Próximo" (o rodapé mantém a altura) e sem avanço automático; a voz e o loader funcionam normalmente. O pin do card é o gatilho e fica em destaque do momento em que o tooltip entra até o clique: 1,5× maior, anel luminoso laranja (`#FF6A1F`) que expande e some a cada 1,2 s, um salto curto a cada ciclo e o balão "Fixar no menu" sempre visível acima dele, com seta. O clique favorita (pin azul, escala 0,85 → 1,1 → 1), o ícone do Conversas voa em arco até a sidebar (500 ms) e o fluxo avança. Voltar da 4 para a 3 desfaz o favorito.
+- **Etapa 3 (Conversas) avança favoritando** (`advanceOn: 'action'`): sem "Próximo" (o rodapé mantém a altura) e sem avanço automático; a voz funciona normalmente, e o pin pode ser clicado a qualquer momento, em qualquer modo. O pin do card é o gatilho e fica em destaque do momento em que o tooltip entra até o clique: 1,5× maior, anel luminoso laranja (`#FF6A1F`) que expande e some a cada 1,2 s, um salto curto a cada ciclo e o balão "Fixar no menu" sempre visível acima dele, com seta. O clique favorita (pin azul, escala 0,85 → 1,1 → 1), o ícone do Conversas voa em arco até a sidebar (500 ms) e o fluxo avança. Voltar da 4 para a 3 desfaz o favorito.
 - **Prévia da etapa 3:** um cursor de seta em SVG (preto com contorno branco e sombra leve, 20×27) entra, para no pin, clica (0,9 → 1, com uma onda circular saindo do ponto) e o pin fica fixado; repete a cada ~4 s. Com `prefers-reduced-motion`, o anel do pin e o cursor ficam parados, mas visíveis.
 - **Destaques sólidos:** os cards de "Seu negócio" são brancos e opacos, como no Figma (antes: branco a 35% com `backdrop-filter`, que ficava cinza sobre o overlay). Um teste compara o pixel central de cada alvo com e sem o onboarding.
-- **AudioContext** não é criado no primeiro clique da página (isso travava a thread por ~400 ms): ele nasce quando a fala toca depois de o áudio ter sido liberado, ou quando o usuário religa a voz.
+- **AudioContext** não é criado no carregamento nem no primeiro clique (isso travava a thread por ~400 ms): ele nasce quando a fala toca depois de o áudio ter sido liberado por uma interação, ou quando o usuário religa a voz.
 
 ## API do `NexoGuide`
 
@@ -132,7 +143,7 @@ type Step = {
   route: '/home' | '/ferramentas' | '/seu-negocio';
   target: string | string[]; // seletor(es) do alvo; grupos sobem juntos
   highlight: 'circle' | 'card' | 'row' | 'none';
-  advanceOn: 'next' | 'target' | 'action'; // Próximo/timer | + clique no alvo | só a ação
+  advanceOn: 'next' | 'target' | 'action'; // Próximo/fim da fala | + clique no alvo | só a ação
   action?: { selector: string; label: string; hint: string; run: () => void; flyTo?: string };
   voice: string; // fala gravada (chave do src/voice/voiceManifest.json)
   text: string; // preenchido a partir do manifesto (mesma divisão de palavras do grifo)

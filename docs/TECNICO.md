@@ -35,7 +35,7 @@ O `npm test` abre o Chrome instalado via `playwright-core`. Ele cobre:
 - fim do tour sem resíduos (overlay, destaques, z-index, trava de rolagem, Nexo destruído, listeners de teclado), persistência, Tab preso no tooltip, `:focus-visible` e o Esc ignorado em cada uma das 9 etapas;
 - movimento reduzido e fallback sem WebGL;
 - etapa 3: pin em destaque (1,5×, anel pulsando, salto, balão com seta) até o clique, e o cursor de seta na prévia;
-- voz por padrão: "Próximo" desativado até o loader completar, em todas as etapas e nos dois modos; com voz, avanço em duração + 400 ms (exceto na última etapa, que só ativa o "Finalizar"); pausar leva ao modo texto (texto branco, loader continuando no ritmo de leitura, sem avanço); as seguintes ficam no modo texto até religar a voz; autoplay bloqueado cai no modo texto sem erro e a voz volta depois do primeiro clique; boca só com palavra ativa;
+- os três modos: com voz (borda, "Próximo" desativado durante a fala, avanço em duração + 400 ms, exceto nas etapas 3 e última); texto ("Próximo" ativo e sem borda desde a entrada em todas as etapas, clique avança na hora, nunca avança sozinho); pausar no meio da fala (texto branco, botão ativo e sem borda no mesmo instante); religar (fala do início, borda do zero, botão desativado); autoplay bloqueado (voz armada, botão ativo, primeiro clique em qualquer lugar, no "Próximo" ou no ícone); boca só com palavra ativa;
 - última etapa na Home (linha do Waz com a mensagem, geometria do Figma a 1920×1080) e a Home limpa com a mensagem depois do "Finalizar";
 - memória liberada no `destroy()`.
 
@@ -60,7 +60,7 @@ src/
     NexoLook.ts           olhar seguindo o mouse
     narration.ts          Web Speech API (legado: só NexoGuide.talk)
   voice/
-    voice.ts              VoicePlayer: relógio da etapa em dois modos (timer de leitura / voz por currentTime), grifo, anel, pausa, AnalyserNode
+    voice.ts              VoicePlayer: modos voice/text/armed, fala por currentTime, grifo, borda, pausa, 1ª interação, AnalyserNode
     voiceManifest.json    texto, duração e tempo de cada palavra (gerado por nexo-voice/)
     flight.ts             trajetória em arco, banking e envelope do voo
     nexoMaterial.ts       material, máscaras e TODOS os valores de render (constantes nomeadas)
@@ -108,7 +108,7 @@ assets-src/               originais: nexo-3d.glb (fora do repositório) e o PNG 
 - **Um dono por eixo:** durante o voo, posição, escala, banking (Z) e yaw pertencem ao arco; durante o gesto, o olhar fica congelado e a flutuação desligada. A flutuação (±3 px em 3 s, sem rotação) e o olhar voltam quando o gesto termina. Nenhum movimento usa `back`/`elastic`.
 - **Entre telas:** a tela seguinte é montada numa sonda invisível para medir o destino antes da decolagem. A troca real (fade out 200 ms, montagem, fade in 250 ms) acontece por baixo do voo.
 - **Voltar:** a mesma troca, no sentido inverso (ver "Navegação nos dois sentidos").
-- **Fala e timer:** começam quando o tooltip termina de entrar. Com voz (padrão), o anel segue o áudio e o fluxo avança 400 ms depois do fim (na última etapa, só ativa o "Finalizar"). No modo texto (pausa do usuário ou autoplay bloqueado), o anel é um timer de leitura (duração × 2,5, mínimo 6 s) e, ao completar, só ativa o "Próximo". Nos dois modos, o "Próximo" e o clique no alvo ficam bloqueados até o anel completar. Toda troca (Próximo, Voltar, alvo, avanço automático, Finalizar) para o áudio e zera grifo, anel e boca antes de qualquer animação. O áudio da etapa seguinte é pré-carregado nos dois modos.
+- **Fala:** começa quando o tooltip termina de entrar. Com voz (padrão), a borda segue o áudio, o "Próximo" fica desativado durante a fala e o fluxo avança 400 ms depois do fim (nunca na etapa 3; na última, só ativa o "Finalizar"). No modo texto (pausa do usuário) e no armado (autoplay bloqueado), o "Próximo" fica ativo e sem borda desde a entrada e nada avança sozinho. Toda troca (Próximo, Voltar, alvo, avanço automático, Finalizar) para o áudio e zera grifo, borda e boca antes de qualquer animação. O áudio da etapa seguinte é pré-carregado.
 - **Etapas especiais:** na 3, a demonstração do cursor começa depois do tooltip e o pin fica em destaque até o clique. A última acontece na Home: a troca de tela da 8 para ela usa a transição entre telas, e a mensagem do Waz entra antes do destaque.
 - **Fim:** no "Finalizar" da última etapa (na Home), o tooltip sai, o Nexo faz `bye` e voa para fora (900 ms), o overlay some e o foco vai para a página (sem anel, a não ser com teclado). A Home fica com a mensagem do Waz. O "Finalizar" é a única saída: o Esc é ignorado durante o tour e não há botão de fechar. No fim, o Nexo é destruído (`destroy()`) e nada do tour fica na página.
 
@@ -139,11 +139,11 @@ Os valores finais são constantes comentadas em [nexoMaterial.ts](../src/nexo/ne
   - A fala são 5 barras em degraus que trocam a cada 70–120 ms, com pulsos nos olhos.
   - Só com a voz ligada e uma palavra ativa, as barras seguem o volume (RMS do `AnalyserNode`, 5 degraus; 3 com movimento reduzido). Entre palavras, na pausa, no fim e em todo o modo texto, a boca fica no sorriso, trocando no mesmo quadro.
 - **Olhar** ([NexoLook.ts](../src/nexo/NexoLook.ts)): o yaw e o pitch são calculados **relativos à direção do tooltip**, limitados a ±28° e ±16°, com constante de tempo de 120 ms. Os olhos chegam antes do corpo. Com o mouse parado por 2 s, o olhar volta ao tooltip em ~600 ms.
-- **Voz:** MP3 gravados por etapa (ver o README, seção "Voz do Nexo"). Ligada por padrão; o ícone pausa e religa (Espaço também). Pausar leva ao modo texto: texto todo branco, anel continuando no ritmo de leitura e sem avanço; religar recomeça a fala do zero. Aba em segundo plano pausa fala e timer; ao voltar, retoma (com voz, do início da palavra).
+- **Voz:** MP3 gravados por etapa (ver o README, seção "Voz do Nexo"). Ligada por padrão; o ícone pausa e religa (Espaço também). Pausar leva ao modo texto: texto todo branco, sem borda, "Próximo" ativo e sem avanço; religar recomeça a fala do zero. Aba em segundo plano pausa a fala; ao voltar, retoma de onde parou.
 
 ## Acessibilidade, movimento reduzido e performance
 
-- **Tooltip:** `role="dialog"`, `aria-modal`, `aria-labelledby`/`aria-describedby` e `aria-live="polite"` no título. O foco vai para o tooltip ao abrir e passa para o "Próximo" quando o loader completa e o botão é liberado e o Tab circula dentro do tooltip ("Voltar", áudio e "Próximo"). O anel de foco só aparece em `:focus-visible`. O canvas tem `aria-hidden`.
+- **Tooltip:** `role="dialog"`, `aria-modal`, `aria-labelledby`/`aria-describedby` e `aria-live="polite"` no título. O foco vai para o "Próximo" ao abrir (no modo com voz, para o tooltip, e passa ao "Próximo" quando a fala termina) e o Tab circula dentro do tooltip ("Voltar", áudio e "Próximo"). O anel de foco só aparece em `:focus-visible`. O canvas tem `aria-hidden`.
   - → e Enter avançam; ← volta (não faz nada na etapa 1). → e Enter só avançam com o "Próximo" liberado. Com o foco em "Voltar" ou no áudio, Enter e Espaço ativam o botão focado.
   - Durante o voo, "Voltar" e "Próximo" ficam desabilitados.
   - Rodapé (2414:5158): "Voltar" 73×40 sem fundo, bolinhas centralizadas e "Próximo". Na etapa 1 o "Voltar" fica invisível e desabilitado, mas ocupa o lugar: o rodapé não muda de altura e as bolinhas não andam.

@@ -207,9 +207,31 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   opacity: 1;
 }
 
+/* Voz armada (o navegador bloqueou o autoplay): o alto-falante pulsa suavemente até a
+   primeira interação liberar o áudio. */
+.coach-audio[data-voice='armed'] {
+  animation: coach-audio-armed 1.6s ease-in-out infinite;
+}
+
+@keyframes coach-audio-armed {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.18);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .coach-audio-icon {
     transition: none;
+  }
+
+  .coach-audio[data-voice='armed'] {
+    animation: none;
   }
 }
 
@@ -276,8 +298,9 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   background: #ebeded;
 }
 
-/* Bloqueado enquanto o loader (anel) enche: a pílula do Figma (2631:3572) esmaecida, sem
-   hover. Ao completar, acende em 200 ms. O anel fica fora do botão, sempre nítido. */
+/* Desativado durante a fala (modo com voz): a pílula do Figma (2631:3572) esmaecida, sem
+   hover, com a borda de progresso em volta. No fim da fala (ou nos modos texto e armado)
+   acende em 200 ms. A borda fica fora do botão, sempre nítida. */
 .coach-next {
   transition:
     opacity 200ms var(--ease-out),

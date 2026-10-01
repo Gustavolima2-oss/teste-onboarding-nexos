@@ -226,10 +226,10 @@ async function start(): Promise<void> {
   let current = initial;
   let closing = false;
   /**
-   * O usuário pausou a voz: o tour segue no modo texto (texto branco, loader no ritmo de
-   * leitura, sem avanço automático) até ele clicar no alto-falante de novo. O tour começa
-   * COM voz; se o navegador bloquear o áudio (autoplay), só aquela etapa fica no modo texto.
-   * Dev: ?voice=off começa no modo texto.
+   * O usuário pausou a voz: o tour segue no modo texto (texto branco, "Próximo" ativo, sem
+   * avanço automático) até ele clicar no ícone de som de novo. O tour começa COM voz; se o
+   * navegador bloquear o áudio (autoplay), a etapa fica com a voz armada até a primeira
+   * interação (VoicePlayer). Dev: ?voice=off começa no modo texto.
    */
   let textMode = import.meta.env.DEV && params.get('voice') === 'off';
   /** Avanço automático agendado (fim da fala + 400 ms). */
@@ -243,22 +243,30 @@ async function start(): Promise<void> {
   const uninstallAudioUnlock = installAudioUnlock();
   const voice = new VoicePlayer({
     onFrame: (f) => {
+      // Borda de progresso só no modo com voz; nos modos texto e armado, texto todo branco.
       coach.setVoiceProgress(f.progress, f.spoken);
-      // Tocando: ícone de pausa. Desligada, pausada ou terminada: alto-falante.
-      coach.setVoiceState(f.voice && f.mode === 'playing' ? 'playing' : 'off');
-      // Boca: só com voz e palavra ativa; entre palavras, na pausa, no fim e sem voz, sorriso
-      // no mesmo quadro.
+      // Ícone: pausa enquanto fala; alto-falante nos modos texto e armado (pulsando no armado).
+      coach.setVoiceState(
+        f.kind === 'voice' && f.mode === 'playing'
+          ? 'playing'
+          : f.kind === 'armed'
+            ? 'armed'
+            : 'off',
+      );
+      // "Próximo": desativado só durante a fala (modo com voz); ativo nos modos texto e
+      // armado e no fim da fala. Deriva só do modo, nunca de um timer.
+      if (f.id) coach.setNextLocked(f.kind === 'voice' && f.mode !== 'ended');
+      // Boca: só com voz e palavra ativa; entre palavras, na pausa, no fim e nos modos texto e
+      // armado, sorriso no mesmo quadro.
       nexo.speakLevel(f.voice && f.speaking ? (f.level ?? 'auto') : null);
     },
-    onEnd: (id, spoken) => {
+    onEnd: (id) => {
       const step = STEPS[current];
       if (busy || closing || !step || step.voice !== id) return;
       cancelAutoAdvance();
-      // Loader completo: o "Próximo" (e o clique no alvo) é liberado.
-      coach.setNextLocked(false);
-      // Avanço automático só no modo com voz (fim do áudio + 400 ms). Nunca no modo texto,
-      // na etapa de ação (avança pelo pin) nem na última (o "Finalizar" só é ativado).
-      if (!spoken || step.advanceOn === 'action' || current >= STEPS.length - 1) return;
+      // Fim da fala: avança sozinho 400 ms depois. Nunca na etapa de ação (avança pelo pin)
+      // nem na última (o "Finalizar" só é ativado).
+      if (step.advanceOn === 'action' || current >= STEPS.length - 1) return;
       autoAdvance = gsap.delayedCall(AUTO_ADVANCE_DELAY_S, () => {
         autoAdvance = null;
         if (busy || closing || STEPS[current]?.voice !== id) return;
@@ -286,7 +294,7 @@ async function start(): Promise<void> {
       nexo.lookAt(tooltipCenter(layout));
     },
     onNext: (index) => {
-      // Só com o loader completo (o botão e o clique no alvo já respeitam isso).
+      // Só com o "Próximo" liberado (o botão e o clique no alvo já respeitam isso).
       if (busy || coach.isNextLocked) return;
       if (index >= STEPS.length - 1) void finish();
       else void go(index, index + 1);
@@ -302,13 +310,13 @@ async function start(): Promise<void> {
     onVoiceToggle: () => {
       if (busy) return;
       if (voice.isVoice && (voice.state === 'playing' || voice.state === 'paused')) {
-        // Falando: pausar leva ao modo texto (texto branco, boca no padrão, loader
-        // continua no ritmo de leitura) nesta etapa e nas seguintes.
+        // Falando: pausar leva ao modo texto na hora (texto branco, boca no padrão, sem
+        // borda, "Próximo" ativo) nesta etapa e nas seguintes.
         textMode = true;
         voice.toText();
       } else {
-        // Modo texto (ou fala terminada): religa a voz e fala a etapa do início. O
-        // "Próximo" já liberado continua liberado.
+        // Modo texto, armado ou fala terminada: (re)liga a voz e fala a etapa do início
+        // (texto cinza, borda do zero, "Próximo" desativado até o fim da fala).
         textMode = false;
         cancelAutoAdvance();
         coach.prepareText(true);
@@ -328,12 +336,14 @@ async function start(): Promise<void> {
     debug.setStep(step.id);
     busy = false;
     coach.prepareText(!textMode);
+    // Modo texto: "Próximo" ativo desde a entrada do tooltip. Com voz, desativado até o fim
+    // da fala (ou até o navegador bloquear o áudio: voz armada, botão ativo).
+    coach.setNextLocked(!textMode);
     await coach.showTooltip();
     if (closing || STEPS[current] !== step) return;
     setState('ready', step.id);
-    // Fala (padrão) ou timer de leitura (modo texto): começa com o tooltip já na tela e
-    // enche o loader; o "Próximo" fica bloqueado até ele completar (onEnd).
-    void voice.start(step.voice, !textMode);
+    // A fala começa com o tooltip já na tela (ou só o texto, no modo texto).
+    void voice.start(step.voice, textMode ? 'text' : 'voice');
     // Etapa de ação: o pin ganha o destaque assim que o tooltip entra (até o clique).
     if (step.advanceOn === 'action') coach.setActionPulse(true);
     const next = STEPS[STEPS.indexOf(step) + 1];

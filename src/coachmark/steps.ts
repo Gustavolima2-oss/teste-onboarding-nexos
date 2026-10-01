@@ -7,7 +7,7 @@
 // por espaços, uma palavra por <span>, para o grifo casar com a fala.
 //
 // Navegação nos dois sentidos: "Próximo" (→, Enter, clique no alvo quando ele é um item
-// de navegação: advanceOn 'target', ou o fim do timer/da fala) e "Voltar" (←). A etapa 3
+// de navegação: advanceOn 'target', ou o fim da fala no modo com voz) e "Voltar" (←). A etapa 3
 // avança só pela ação do usuário (advanceOn 'action': favoritar pelo pin do card). O
 // estado do fluxo é DERIVADO da etapa (flowStateAt), a partir dos efeitos em
 // `completes`: voltar desfaz exatamente o que o avanço fez.
@@ -34,9 +34,9 @@ export type Step = {
   highlight: 'circle' | 'card' | 'row' | 'none';
   /**
    * Como a etapa avança:
-   * - 'next': "Próximo", →/Enter ou o fim do timer/da fala;
+   * - 'next': "Próximo", →/Enter ou o fim da fala (modo com voz);
    * - 'target': também pelo clique no alvo (item de navegação: cursor pointer e hover);
-   * - 'action': SÓ por uma ação do usuário (`action`): sem "Próximo", sem timer e sem
+   * - 'action': SÓ por uma ação do usuário (`action`): sem "Próximo" e sem
    *   avanço automático. Nos outros alvos, o clique não navega.
    */
   advanceOn: 'next' | 'target' | 'action';
@@ -127,7 +127,7 @@ export const STEPS: Step[] = [
     route: '/ferramentas',
     target: '[data-coach="card-conversas"]',
     highlight: 'card',
-    // Avança favoritando: o pin do card é o gatilho (sem "Próximo" e sem timer).
+    // Avança favoritando: o pin do card é o gatilho (sem "Próximo"), em qualquer modo.
     advanceOn: 'action',
     action: {
       selector: '[data-coach="fav-conversas"]',
