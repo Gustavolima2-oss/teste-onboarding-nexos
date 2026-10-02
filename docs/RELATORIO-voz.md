@@ -10,20 +10,20 @@ Comportamento: voz desde o início (com o convite "Começar" quando o navegador 
 
 Todas as etapas foram marcadas com o **faster-whisper** (modelo `small`). **Nenhuma caiu no plano B** (energia + sílabas). Em todas, os tempos são crescentes, sem sobreposição, e a última palavra termina antes do fim do áudio.
 
-| #   | Etapa                 | Duração | Palavras | Método                | Fim da última palavra |
-| --- | --------------------- | ------- | -------- | --------------------- | --------------------- |
-| 1   | `step-01-ferramentas` | 2,29 s  | 5        | faster-whisper        | 2,02 s                |
-| 2   | `step-02-agentes`     | 4,99 s  | 14       | faster-whisper        | 4,58 s                |
-| 3   | `step-03-conversas`   | 6,08 s  | 15       | faster-whisper        | 5,84 s                |
-| 4   | `step-04-favoritas`   | 4,34 s  | 12       | faster-whisper        | 3,78 s                |
-| 5   | `step-05-seu-negocio` | 2,9 s   | 7        | faster-whisper        | 2,52 s                |
-| 6   | `step-06-base`        | 3,42 s  | 11       | faster-whisper        | 3,27 s                |
-| 7   | `step-07-produtos`    | 3,33 s  | 8        | faster-whisper        | 3,1 s                 |
-| 8   | `step-08-integracoes` | 2,87 s  | 6        | faster-whisper        | 2,5 s                 |
-| 9   | `step-09-waz`         | 4,9 s   | 15       | faster-whisper+prompt | 4,6 s                 |
+| #   | Etapa                 | Duração | Palavras | Método         | Fim da última palavra |
+| --- | --------------------- | ------- | -------- | -------------- | --------------------- |
+| 1   | `step-01-ferramentas` | 2,29 s  | 5        | faster-whisper | 2,02 s                |
+| 2   | `step-02-agentes`     | 4,99 s  | 14       | faster-whisper | 4,58 s                |
+| 3   | `step-03-conversas`   | 6,08 s  | 15       | faster-whisper | 5,84 s                |
+| 4   | `step-04-favoritas`   | 4,34 s  | 12       | faster-whisper | 3,78 s                |
+| 5   | `step-05-seu-negocio` | 2,9 s   | 7        | faster-whisper | 2,52 s                |
+| 6   | `step-06-base`        | 3,42 s  | 11       | faster-whisper | 3,27 s                |
+| 7   | `step-07-produtos`    | 3,33 s  | 8        | faster-whisper | 3,1 s                 |
+| 8   | `step-08-integracoes` | 2,87 s  | 6        | faster-whisper | 2,5 s                 |
+| 9   | `step-09-waz`         | 4,265 s | 14       | faster-whisper | 3,96 s                |
 
-- **Etapa 9 (`initial_prompt`):** sem ele, o reconhecimento ouviu "K .O .E. O OIS vai te ajudar…", e o casamento com o texto pôs "Kauê, o Waz" inteiro em 0–0,34 s. Com o texto da fala como `initial_prompt`, as marcações (Kauê 0,00–0,36; o 0,64–0,82; Waz 0,82–1,12; vai 1,12) batem com a energia do áudio: fala em 0,04–0,34 s, pausa até 0,62 s e "o Waz" em 0,66–1,12 s. Fica registrado em `voices.json` (`"prompt": true`).
-- **Waz ("Uóis"):** na etapa 2, o reconhecimento ouviu "OIS" e o grifo acende "Waz" em 0,92 s, no início da palavra falada; na etapa 9, em 0,82 s.
+- **Etapa 9 (texto genérico):** a fala passou a ser "O Waz vai te ajudar a seguir daqui em diante! Nos vemos em breve.", sem o nome do usuário, com áudio novo. O reconhecimento ouviu "O OIS vai te ajudar…" e acertou sozinho, sem `initial_prompt` (que a versão com "Kauê" precisava): "Waz" em 0,16–0,50 s, batendo com a energia do áudio (fala em 0,04–0,48 s, pausa, "vai" em ~0,64 s).
+- **Waz ("Uóis"):** na etapa 2, o reconhecimento ouviu "OIS" e o grifo acende "Waz" em 0,92 s, no início da palavra falada; na etapa 9, em 0,16 s.
 - **Etapa 4:** o reconhecimento ouviu "home page" (duas palavras); o grifo acende "homepage" no início de "home".
 - **Etapa 6:** o emoji 🧠 é um item à parte no manifesto. Na tela, ele acende junto com "negócio" e não mexe a boca.
 - **ffmpeg:** o `align.py` usa o ffmpeg só para ler o áudio. Esta máquina não tem ffmpeg do sistema; o build rodou com o binário estático do pacote `imageio-ffmpeg` no PATH.

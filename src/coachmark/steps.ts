@@ -219,6 +219,8 @@ export const STEPS: Step[] = [
     // card branco com a mensagem). O tooltip leva o vídeo do Waz com o Nexo no topo (como
     // o 2483:6455): abaixo do card, alinhado à direita (454 = 962 − 508; 23 = 444 − 421).
     // O vídeo já mostra o Nexo: o 3D entra nele (intoMedia); o offset só reserva o lugar.
+    // Texto (genérico, sem o nome do usuário, vindo do manifesto): "O Waz vai te ajudar a
+    // seguir daqui em diante! Nos vemos em breve."
     id: 'waz',
     route: '/home',
     target: '[data-coach="member-waz"]',
@@ -231,7 +233,7 @@ export const STEPS: Step[] = [
       offset: { x: 454, y: 23 },
       media: {
         poster: asset('video/waz-nexo-poster.jpg'),
-        alt: 'Kauê e o Waz',
+        alt: 'O Waz com o Nexo',
         sources: [
           { src: asset('video/waz-nexo.webm'), type: 'video/webm' },
           { src: asset('video/waz-nexo.mp4'), type: 'video/mp4' },
