@@ -1,59 +1,14 @@
 {
-  "note": "Voz: Tiago Lima (Magnific voiceId 450, eleven_v3, stability 0.6, similarity 0.75, speed 1.0, sem tags). Filtro em robotize.py: +3 semitons com timbre preservado e 5% de vocoder. Os links do Magnific expiram por volta de 04/10/2026: rode o build antes disso e versione os MP3 gerados.",
+  "note": "Voz final do Nexo: Seed Audio 1.0 (Magnific), gravação única com as nove falas, igualada em timbre à voz aprovada, acelerada 1,2x, pausas internas encurtadas e cortada por fala. Os arquivos em sources/ já são finais: não aplicar nenhum efeito nem mudar a velocidade.",
   "steps": [
-    {
-      "id": "step-01-ferramentas",
-      "figmaNode": "2350:2871",
-      "text": "Aqui você acessa suas ferramentas",
-      "source": "sources/step-01-ferramentas.mp3"
-    },
-    {
-      "id": "step-02-agentes",
-      "figmaNode": "2350:45423",
-      "text": "Vamos focar no Waz por hora, mas você pode contratar mais agentes futuramente depois.",
-      "url": "removido do repositório público (link assinado do Magnific, expira ~04/10/2026); o áudio limpo foi baixado para nexo-voice/.clean/"
-    },
-    {
-      "id": "step-03-conversas",
-      "figmaNode": "2350:46104",
-      "text": "Conversas é por onde você consegue visualizar seus leads e atendimentos. Vamos deixar ela favoritada?",
-      "url": "removido do repositório público (link assinado do Magnific, expira ~04/10/2026); o áudio limpo foi baixado para nexo-voice/.clean/"
-    },
-    {
-      "id": "step-04-favoritas",
-      "figmaNode": "2350:50099",
-      "text": "Assim ela fica disponível aqui na barra lateral e na sua homepage",
-      "url": "removido do repositório público (link assinado do Magnific, expira ~04/10/2026); o áudio limpo foi baixado para nexo-voice/.clean/"
-    },
-    {
-      "id": "step-05-seu-negocio",
-      "figmaNode": "2350:50882",
-      "text": "Aqui ficam as informações do seu negócio",
-      "url": "removido do repositório público (link assinado do Magnific, expira ~04/10/2026); o áudio limpo foi baixado para nexo-voice/.clean/"
-    },
-    {
-      "id": "step-06-base",
-      "figmaNode": "2350:51269",
-      "text": "Base de conhecimento é o cérebro digital do seu negócio 🧠",
-      "url": "removido do repositório público (link assinado do Magnific, expira ~04/10/2026); o áudio limpo foi baixado para nexo-voice/.clean/"
-    },
-    {
-      "id": "step-07-produtos",
-      "figmaNode": "2483:6066",
-      "text": "Seu catálogo de produtos e serviços fica aqui.",
-      "url": "removido do repositório público (link assinado do Magnific, expira ~04/10/2026); o áudio limpo foi baixado para nexo-voice/.clean/"
-    },
-    {
-      "id": "step-08-integracoes",
-      "figmaNode": "2483:6244",
-      "text": "Por aqui você administra suas integrações",
-      "url": "removido do repositório público (link assinado do Magnific, expira ~04/10/2026); o áudio limpo foi baixado para nexo-voice/.clean/"
-    },
-    {
-      "id": "step-09-waz",
-      "figmaNode": "2350:51560",
-      "text": "Kauê, o Waz vai te ajudar a seguir daqui em diante! Nos vemos em breve.",
-      "url": "removido do repositório público (link assinado do Magnific, expira ~04/10/2026); o áudio limpo foi baixado para nexo-voice/.clean/"
-    }
+    {"id": "step-01-ferramentas", "text": "Aqui você acessa suas ferramentas", "source": "sources/step-01-ferramentas.mp3"},
+    {"id": "step-02-agentes", "text": "Vamos focar no Waz por hora, mas você pode contratar mais agentes futuramente depois.", "source": "sources/step-02-agentes.mp3"},
+    {"id": "step-03-conversas", "text": "Conversas é por onde você consegue visualizar seus leads e atendimentos. Vamos deixar ela favoritada?", "source": "sources/step-03-conversas.mp3"},
+    {"id": "step-04-favoritas", "text": "Assim ela fica disponível aqui na barra lateral e na sua homepage", "source": "sources/step-04-favoritas.mp3"},
+    {"id": "step-05-seu-negocio", "text": "Aqui ficam as informações do seu negócio", "source": "sources/step-05-seu-negocio.mp3"},
+    {"id": "step-06-base", "text": "Base de conhecimento é o cérebro digital do seu negócio 🧠", "source": "sources/step-06-base.mp3"},
+    {"id": "step-07-produtos", "text": "Seu catálogo de produtos e serviços fica aqui.", "source": "sources/step-07-produtos.mp3"},
+    {"id": "step-08-integracoes", "text": "Por aqui você administra suas integrações", "source": "sources/step-08-integracoes.mp3"},
+    {"id": "step-09-waz", "text": "Kauê, o Waz vai te ajudar a seguir daqui em diante! Nos vemos em breve.", "source": "sources/step-09-waz.mp3", "prompt": true}
   ]
 }

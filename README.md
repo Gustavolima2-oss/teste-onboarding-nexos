@@ -73,19 +73,20 @@ O pipeline ([scripts/optimize-glb.sh](scripts/optimize-glb.sh)) faz `weld` → d
 
 ## Voz do Nexo
 
-As falas (voz do Tiago Lima) são MP3 gravados, um por etapa, em `public/audio/nexo/`, com o tempo de cada palavra em [src/voice/voiceManifest.json](src/voice/voiceManifest.json). Os dois são gerados pelo pipeline em [nexo-voice/](nexo-voice/) e versionados.
+As falas são a **voz final do Nexo**: nove MP3 prontos em [nexo-voice/sources/](nexo-voice/sources/), sem nenhum efeito, filtro ou mudança de velocidade aplicados no projeto. O build os copia como estão para `public/audio/nexo/` e gera o tempo de cada palavra em [src/voice/voiceManifest.json](src/voice/voiceManifest.json). Os dois são versionados.
 
 ```bash
-brew install ffmpeg                      # precisa do filtro rubberband: ffmpeg -filters | grep rubberband
-pip install numpy scipy faster-whisper
+pip install numpy scipy faster-whisper   # e o ffmpeg no PATH (só para ler o áudio)
 python3 nexo-voice/build_voices.py       # a partir da raiz do app
 ```
 
-- `robotize.py` aplica o filtro aprovado (+3 semitons com o timbre preservado, via rubberband, e 5% de vocoder; parâmetros intocados, duração preservada). `align.py` marca cada palavra com o faster-whisper (modelo `small`), alinhando ao texto exibido.
-- O player ([src/voice/voice.ts](src/voice/voice.ts)) conduz cada etapa nos três modos (`voice`, `text`, `armed`). No modo com voz, ele lê `audio.currentTime` a cada quadro e publica palavras já ditas, progresso da borda, palavra ativa e volume do `AnalyserNode` (5 degraus; 3 com movimento reduzido). Nos modos texto e armado não há relógio: o texto vem inteiro e a borda fica em zero. Sem palavra ativa, e em todo o modo texto ou armado, a boca fica no sorriso, trocando no mesmo quadro.
+- `align.py` marca cada palavra com o faster-whisper (modelo `small`) e casa as palavras ouvidas com o texto da tela, então o grifo segue o que está escrito: o Waz é falado "Uóis" e o grifo passa pelo "Waz" no momento certo (etapa 2: 0,92 s; etapa 9: 0,82 s).
+- **Etapas que precisaram de `initial_prompt`:** só a **9**. Sem ele, o reconhecimento ouviu "K .O .E. O OIS" e espremeu "Kauê, o Waz" em 0,34 s; com o texto da fala como `initial_prompt` (`"prompt": true` no `voices.json`, `--prompt` no `align.py`), os tempos batem com a energia do áudio. O `method` dela no manifesto é `faster-whisper+prompt`; as outras oito são `faster-whisper`.
+- O player ([src/voice/voice.ts](src/voice/voice.ts)) conduz cada etapa nos três modos (`voice`, `text`, `armed`). No modo com voz, ele lê `audio.currentTime` a cada quadro e publica palavras já ditas, progresso da borda, palavra ativa e volume do `AnalyserNode`. Nos modos texto e armado não há relógio: o texto vem inteiro e a borda fica em zero. Sem palavra ativa, e em todo o modo texto ou armado, a boca fica no sorriso, trocando no mesmo quadro.
+- **Boca:** nível = `min(1, RMS × MOUTH_GAIN)`, em 5 degraus (3 com movimento reduzido). A voz final tem RMS bem menor nas janelas de 1024 amostras que a anterior (mediana 0,03), então o ganho foi de 4 para **10**: os cinco degraus são usados quase por igual e só ~6% das janelas saturam.
 - Se o `play()` for rejeitado, a etapa fica com a voz armada (nota informativa no console, sem erro).
 - Dev: `?voice=off` abre o tour no modo texto; `window.__nexo.voice.skip()` leva a fala da etapa ao fim (testes).
-- Para trocar um texto: gere a voz no Magnific com a mesma configuração (`note` em `nexo-voice/voices.json`), atualize o item e rode o build de novo. O texto do tooltip vem do manifesto.
+- Para trocar uma fala: gere de novo a gravação única com todas as falas (mesmo prompt e a voz aprovada como referência, para a voz continuar igual entre elas), corte por fala em `nexo-voice/sources/`, atualize o texto em `voices.json` e rode o build. O texto do tooltip vem do manifesto.
 
 **Decisões**
 
@@ -172,7 +173,7 @@ type Step = {
 ## Pendências conhecidas
 
 - **Navegadores:** testado só no Chrome (desktop, macOS). Faltam Safari e Firefox.
-- **Voz:** ver [docs/RELATORIO-voz.md](docs/RELATORIO-voz.md) (durações, método de marcação por etapa e conferência do filtro).
+- **Voz:** ver [docs/RELATORIO-voz.md](docs/RELATORIO-voz.md) (durações e método de marcação por etapa).
 - **Braços do Nexo:** o GLB é uma malha única, sem esqueleto, então os braços não se mexem e os gestos são do corpo inteiro. Para gestos de braço, é preciso um GLB com esqueleto real.
 - **Render:** aparecem pontos de brilho serrilhado na silhueta do casco. A tela do modelo é mais larga que a do PNG de referência (limite da geometria).
 - **Tempo entre telas:** do clique ao tooltip, a troca entre telas leva ~1,7 s (tela limpa de 0,6 s + volta do overlay), acima da meta de 1,2 s das trocas na mesma tela. Ajuste em `CLEAN_SCREEN_HOLD_S`.

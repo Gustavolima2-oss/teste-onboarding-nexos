@@ -1,7 +1,7 @@
 """Gera as marcações de tempo de cada palavra (para o grifo e a boca).
-Uso: python3 align.py audio_limpo.mp3 "texto exibido no tooltip" saida.json
-Rode no áudio LIMPO (antes do robotize.py): a transcrição é mais precisa e
-os tempos valem igual para o processado, porque a duração não muda.
+Uso: python3 align.py audio.mp3 "texto exibido no tooltip" saida.json [--prompt]
+Roda direto no áudio final (sem processamento). Com --prompt, o texto da fala vai como
+initial_prompt para o faster-whisper: ajuda quando o reconhecimento erra palavras.
 
 Estratégia:
  1. faster-whisper (modelo small, pt, word_timestamps) transcreve com tempos;
@@ -43,10 +43,11 @@ def fallback(sr, x, display):
         d = (b - a) * k / tot; out.append({"text": t, "start": round(cur, 3), "end": round(cur + d, 3)}); cur += d
     return out
 
-def whisper(path, display):
+def whisper(path, display, prompt=None):
     from faster_whisper import WhisperModel
     model = WhisperModel("small", device="cpu", compute_type="int8")
-    segs, _ = model.transcribe(path, language="pt", word_timestamps=True, vad_filter=False)
+    segs, _ = model.transcribe(path, language="pt", word_timestamps=True, vad_filter=False,
+                               initial_prompt=prompt)
     rec = [(wd.word.strip(), wd.start, wd.end) for s in segs for wd in s.words]
     A = [norm(t) for t in display]; B = [norm(r[0]) for r in rec]
     times = [None] * len(display)
@@ -74,10 +75,12 @@ def whisper(path, display):
 
 if __name__ == "__main__":
     path, text, dst = sys.argv[1], sys.argv[2], sys.argv[3]
+    use_prompt = "--prompt" in sys.argv[4:]
     display = text.split()
     sr, x = load(path); dur = len(x) / sr
     try:
-        words = whisper(path, display); method = "faster-whisper"
+        words = whisper(path, display, text if use_prompt else None)
+        method = "faster-whisper+prompt" if use_prompt else "faster-whisper"
     except Exception as e:
         print("aviso: usando plano B (", e, ")", file=sys.stderr)
         words = fallback(sr, x, display); method = "energia+silabas"

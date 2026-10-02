@@ -24,6 +24,13 @@ export type VoiceClip = {
 };
 export const VOICES: Record<string, VoiceClip> = manifest;
 
+/**
+ * Boca: nível = min(1, RMS × MOUTH_GAIN), em janelas de 1024 amostras do AnalyserNode.
+ * Calibrado para a voz final (RMS mediano das palavras ≈ 0,03, p90 ≈ 0,09): com 10, os
+ * cinco degraus da boca são usados de forma quase uniforme e só ~6% das janelas saturam.
+ */
+export const MOUTH_GAIN = 10;
+
 /** Emoji ou pontuação solta: acompanha a palavra anterior e não mexe a boca. */
 export const isSymbolToken = (t: string): boolean => !/[\p{L}\p{N}]/u.test(t);
 
@@ -391,7 +398,7 @@ export class VoicePlayer {
     an.getFloatTimeDomainData(this.buf);
     let sum = 0;
     for (const v of this.buf) sum += v * v;
-    return Math.min(1, Math.sqrt(sum / this.buf.length) * 4);
+    return Math.min(1, Math.sqrt(sum / this.buf.length) * MOUTH_GAIN);
   }
 
   private frame(): VoiceFrame {
