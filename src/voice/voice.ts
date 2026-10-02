@@ -1,14 +1,15 @@
 // Voz gravada do Nexo: MP3 por etapa (public/audio/nexo/) + tempos de cada palavra
 // (voiceManifest.json, gerado por nexo-voice/build_voices.py).
 //
-// O VoicePlayer conduz a fala de cada etapa, em três modos (VoiceKind):
+// O VoicePlayer conduz cada etapa em dois modos (VoiceKind):
 // - 'voice' (padrão): o relógio é `audio.currentTime`, lido a cada quadro (gsap.ticker =
 //   requestAnimationFrame), nunca por timers próprios. Publica as palavras já ditas
 //   (grifo), a palavra ativa, o volume (boca) e o progresso (borda do "Próximo").
-// - 'text' (o usuário pausou a voz): sem áudio e sem relógio nenhum; texto todo branco.
-// - 'armed' (o navegador bloqueou o autoplay): como 'text', mas esperando a primeira
-//   interação na página (pointerdown ou keydown) para começar a fala da etapa atual.
-// O fim da fala chega em `onEnd(id)`; quem decide se avança é o orquestrador.
+// - 'text' (voz pausada pelo usuário, ou play() recusado): texto todo branco e um relógio
+//   interno de duração do áudio × TEXT_MODE_TIMER_FACTOR enchendo a mesma borda.
+// O fim do relógio chega em `onEnd(id, voice)`; quem decide se avança é o orquestrador
+// (só no modo com voz). Antes do tour, `canPlay` testa em silêncio se o navegador deixa
+// tocar som (autoplay); se não deixar, o orquestrador mostra o convite "Começar".
 
 import { gsap } from 'gsap';
 import manifest from './voiceManifest.json';
@@ -34,9 +35,18 @@ export const MOUTH_GAIN = 10;
 /** Emoji ou pontuação solta: acompanha a palavra anterior e não mexe a boca. */
 export const isSymbolToken = (t: string): boolean => !/[\p{L}\p{N}]/u.test(t);
 
-/** Modo da etapa: fala com áudio, texto (voz pausada pelo usuário) ou voz armada (autoplay bloqueado). */
-export type VoiceKind = 'voice' | 'text' | 'armed';
-/** Andamento da fala (só no modo 'voice'; nos outros, 'idle'). */
+/**
+ * Modo texto: a borda do "Próximo" enche em duração do áudio × este fator (1,0 = no tempo
+ * da fala). Ajuste aqui.
+ */
+export const TEXT_MODE_TIMER_FACTOR = 1.0;
+
+/** Duração do relógio do modo texto de uma etapa (s). */
+export const textDuration = (clip: VoiceClip): number => clip.duration * TEXT_MODE_TIMER_FACTOR;
+
+/** Modo da etapa: fala com áudio ou texto (voz pausada pelo usuário ou play() recusado). */
+export type VoiceKind = 'voice' | 'text';
+/** Andamento do relógio da etapa (fala ou timer do modo texto). */
 export type VoiceMode = 'idle' | 'playing' | 'paused' | 'ended';
 
 export type VoiceFrame = {
@@ -45,11 +55,11 @@ export type VoiceFrame = {
   mode: VoiceMode;
   /** true só no modo 'voice' (grifo e boca). */
   voice: boolean;
-  /** Tempo da fala (s). */
+  /** Tempo no relógio da etapa (s). */
   t: number;
-  /** 0..1 da borda de progresso (só cresce); 0 nos modos 'text' e 'armed'. */
+  /** 0..1 da borda de progresso; só cresce (pausar continua de onde estava). */
   progress: number;
-  /** Palavras já acesas (fora do modo 'voice', todas). */
+  /** Palavras já acesas (no modo texto, todas). */
   spoken: number;
   /** Palavra sendo dita agora (currentTime entre start e end), ou −1. */
   active: number;
@@ -61,8 +71,8 @@ export type VoiceFrame = {
 
 export type VoicePlayerOptions = {
   onFrame: (f: VoiceFrame) => void;
-  /** A fala da etapa chegou ao fim (só no modo 'voice'). */
-  onEnd: (id: string) => void;
+  /** O relógio da etapa chegou ao fim (fala ou timer do modo texto). */
+  onEnd: (id: string, voice: boolean) => void;
 };
 
 /** Usuário já interagiu com a página: o áudio pode tocar nas etapas seguintes. */
@@ -108,12 +118,13 @@ export class VoicePlayer {
   private el: HTMLAudioElement | null = null;
   private kind: VoiceKind = 'text';
   private mode: VoiceMode = 'idle';
+  /** Relógio do modo texto: tempo acumulado + início do trecho corrente (ms; 0 = parado). */
+  private clock = { t: 0, since: 0 };
   private shown = 0;
+  private pausedAt = 0;
   private hiddenPause = false;
   private token = 0;
   private running = false;
-  /** Escutando a primeira interação da página (modo 'armed'). */
-  private listening = false;
   private last: VoiceFrame | null = null;
 
   constructor(private readonly opts: VoicePlayerOptions) {
@@ -157,85 +168,120 @@ export class VoicePlayer {
   }
 
   /**
-   * Começa a etapa: no modo 'voice', toca o áudio do início (se o navegador bloquear,
-   * passa a 'armed'); no modo 'text', só publica o texto inteiro.
+   * O navegador deixa tocar som agora? Toca o áudio da etapa em volume 0 e para na hora
+   * (nada se ouve). false = autoplay bloqueado: o orquestrador mostra o convite "Começar".
    */
-  async start(id: string, kind: 'voice' | 'text'): Promise<void> {
+  async canPlay(id: string): Promise<boolean> {
+    if (!VOICES[id]) return false;
+    const el = this.audioFor(id);
+    const volume = el.volume;
+    el.volume = 0;
+    try {
+      await el.play();
+      el.pause();
+      el.currentTime = 0;
+      return true;
+    } catch {
+      return false;
+    } finally {
+      el.volume = volume;
+    }
+  }
+
+  /** Libera o áudio a partir de um gesto do usuário (clique em "Começar"). */
+  async unlock(): Promise<void> {
+    unlocked = true;
+    const c = ensureContext();
+    if (c && c.state === 'suspended') await c.resume().catch(() => undefined);
+  }
+
+  /** Começa a etapa do zero: com voz, toca o áudio; no modo texto, roda o relógio. */
+  async start(id: string, kind: VoiceKind): Promise<void> {
     this.stop();
     const clip = VOICES[id];
     if (!clip) return;
     this.id = id;
     this.clip = clip;
     this.el = this.audioFor(id);
-    if (kind === 'voice') {
-      await this.begin();
-      return;
-    }
-    this.kind = 'text';
-    this.emit();
+    if (kind === 'voice') await this.begin();
+    else this.beginText(0);
   }
 
   /** Liga a voz na etapa atual (clique no ícone): fala do início, borda do zero. */
   async enableVoice(): Promise<void> {
     if (!this.clip) return;
-    unlocked = true;
-    const c = ensureContext();
-    if (c && c.state === 'suspended') await c.resume().catch(() => undefined);
+    await this.unlock();
     await this.begin();
   }
 
   /**
-   * Pausa do usuário na fala: passa ao modo 'text' na hora. O áudio para, o texto inteiro
-   * acende, a boca volta ao padrão e a borda some. Religar (enableVoice) recomeça do zero.
+   * Pausa do usuário na fala: passa ao modo texto na hora. O áudio para, o texto inteiro
+   * acende e a boca volta ao padrão; a borda continua de onde estava, no ritmo do modo
+   * texto (proporcional ao que falta). Religar (enableVoice) recomeça a fala do zero.
    */
   toText(): void {
-    if (!this.clip || this.kind !== 'voice') return;
+    const clip = this.clip;
+    if (!clip || this.kind !== 'voice') return;
     this.token++; // cancela um play() pendente
     this.el?.pause();
-    this.kind = 'text';
-    this.mode = 'idle';
-    this.hiddenPause = false;
-    this.shown = 0;
-    this.stopLoop();
-    this.emit();
+    if (this.mode === 'ended') {
+      this.kind = 'text';
+      this.emit();
+      return;
+    }
+    const wasPaused = this.mode === 'paused';
+    this.beginText(this.shown * textDuration(clip), wasPaused);
   }
 
-  /** Testes e depuração: leva a fala ao fim agora (só no modo 'voice'). */
+  /** Testes e depuração: leva o relógio da etapa ao fim agora (fala ou timer). */
   skip(): void {
     const clip = this.clip;
-    if (!clip || this.kind !== 'voice' || this.mode === 'ended' || !this.el) return;
-    try {
-      this.el.currentTime = clip.duration;
-    } catch {
-      /* sem metadados ainda */
+    if (!clip || this.mode === 'ended') return;
+    if (this.kind === 'voice') {
+      if (!this.el) return;
+      try {
+        this.el.currentTime = clip.duration;
+      } catch {
+        /* sem metadados ainda */
+      }
+    } else if (this.mode === 'paused') {
+      this.pausedAt = textDuration(clip);
+    } else {
+      this.clock = { t: textDuration(clip), since: performance.now() };
     }
   }
 
-  /** Congela a fala (aba em segundo plano); `resume()` continua de onde parou. */
+  /** Congela o relógio (aba em segundo plano); `resume()` continua de onde parou. */
   pause(): void {
-    if (this.kind !== 'voice' || this.mode !== 'playing') return;
+    if (this.mode !== 'playing') return;
+    this.pausedAt = this.time();
     this.mode = 'paused';
-    this.el?.pause();
+    if (this.kind === 'voice') this.el?.pause();
+    else this.clock = { t: this.pausedAt, since: 0 };
     this.emit();
   }
 
   /** Retoma de onde parou (volta da aba em segundo plano). */
   async resume(): Promise<void> {
-    if (this.kind !== 'voice' || this.mode !== 'paused' || !this.el) return;
+    if (this.mode !== 'paused' || !this.clip) return;
     this.hiddenPause = false;
     this.mode = 'playing';
+    if (this.kind === 'text') {
+      this.clock = { t: this.pausedAt, since: performance.now() };
+      return;
+    }
+    if (!this.el) return;
     const token = this.token;
     try {
       await this.el.play();
     } catch (err) {
-      if (token === this.token) this.arm(err);
+      if (token === this.token) this.fallBack(err);
     }
   }
 
   /** Para tudo na hora e zera borda, grifo e boca (troca de etapa, fim). */
   stop(): void {
     this.token++;
-    this.unlisten();
     if (this.el) {
       this.el.pause();
       try {
@@ -252,6 +298,7 @@ export class VoicePlayer {
     this.mode = 'idle';
     this.hiddenPause = false;
     this.shown = 0;
+    this.clock = { t: 0, since: 0 };
     this.stopLoop();
     if (had) this.emit();
   }
@@ -277,7 +324,6 @@ export class VoicePlayer {
   /** Fala da etapa atual do início (modo 'voice'). */
   private async begin(): Promise<void> {
     const token = ++this.token;
-    this.unlisten();
     this.shown = 0;
     this.kind = 'voice';
     this.mode = 'playing';
@@ -300,63 +346,33 @@ export class VoicePlayer {
       }
       this.connectAnalyser(el);
     } catch (err) {
-      if (token === this.token) this.arm(err);
+      if (token === this.token) this.fallBack(err);
     }
   }
 
-  /**
-   * `play()` rejeitado (autoplay bloqueado antes da primeira interação): voz ARMADA. O
-   * texto fica inteiro e a etapa espera a primeira interação na página para falar.
-   */
-  private arm(err: unknown): void {
-    console.info('[Nexo] o navegador bloqueou o áudio; a voz começa na primeira interação', err);
-    this.el?.pause();
-    this.kind = 'armed';
-    this.mode = 'idle';
-    this.shown = 0;
-    this.stopLoop();
+  /** Modo texto a partir de `t` segundos do relógio (0 = do começo). */
+  private beginText(t: number, paused = false): void {
+    this.kind = 'text';
+    this.hiddenPause = false;
+    if (paused) {
+      this.mode = 'paused';
+      this.pausedAt = t;
+      this.clock = { t, since: 0 };
+    } else {
+      this.mode = 'playing';
+      this.clock = { t, since: performance.now() };
+      this.startLoop();
+    }
     this.emit();
-    this.listen();
   }
 
-  /** Escuta a primeira interação (pointerdown e keydown no document; removidos no 1º disparo). */
-  private listen(): void {
-    if (this.listening) return;
-    this.listening = true;
-    document.addEventListener('pointerdown', this.onFirstPointer, true);
-    document.addEventListener('keydown', this.onFirstKey, true);
+  /** `play()` recusado mesmo assim: a etapa segue no modo texto, do começo do relógio. */
+  private fallBack(err: unknown): void {
+    console.info('[Nexo] a voz não pôde tocar; esta etapa segue no modo texto', err);
+    this.el?.pause();
+    this.shown = 0;
+    this.beginText(0);
   }
-
-  private unlisten(): void {
-    if (!this.listening) return;
-    this.listening = false;
-    document.removeEventListener('pointerdown', this.onFirstPointer, true);
-    document.removeEventListener('keydown', this.onFirstKey, true);
-  }
-
-  /**
-   * Primeiro clique: a fala começa depois do clique (pointerup + o próprio click), para o
-   * clique valer pelo que ele é — no "Próximo" avança (e a etapa seguinte já fala), no
-   * ícone liga a voz. Se nada disso aconteceu, a etapa atual fala do início.
-   */
-  private onFirstPointer = (): void => {
-    this.unlisten();
-    unlocked = true;
-    document.addEventListener('pointerup', this.afterGesture, { capture: true, once: true });
-  };
-
-  private onFirstKey = (): void => {
-    this.unlisten();
-    unlocked = true;
-    this.afterGesture();
-  };
-
-  private afterGesture = (): void => {
-    const id = this.id;
-    window.setTimeout(() => {
-      if (this.kind === 'armed' && this.id === id && this.clip) void this.begin();
-    }, 0);
-  };
 
   private audioFor(id: string): HTMLAudioElement {
     let el = this.els.get(id);
@@ -392,6 +408,22 @@ export class VoicePlayer {
     }
   }
 
+  /** Duração do relógio corrente (fala ou timer do modo texto). */
+  private span(): number {
+    if (!this.clip) return 1;
+    return this.kind === 'voice' ? this.clip.duration : textDuration(this.clip);
+  }
+
+  private time(): number {
+    if (this.mode === 'paused') return this.pausedAt;
+    if (this.kind === 'text') {
+      return this.clock.since
+        ? this.clock.t + (performance.now() - this.clock.since) / 1000
+        : this.clock.t;
+    }
+    return this.el?.currentTime ?? 0;
+  }
+
   private level(): number | null {
     const an = this.el ? this.analysers.get(this.el) : undefined;
     if (!an) return null;
@@ -404,21 +436,35 @@ export class VoicePlayer {
   private frame(): VoiceFrame {
     const clip = this.clip;
     const base = { id: this.id, kind: this.kind, mode: this.mode };
-    if (!clip || this.kind !== 'voice') {
-      // Modo texto ou armado: texto inteiro aceso, boca parada, sem borda.
+    if (!clip) {
       return {
         ...base,
         voice: false,
         t: 0,
         progress: 0,
-        spoken: clip?.words.length ?? 0,
+        spoken: 0,
         active: -1,
         speaking: false,
         level: null,
       };
     }
-    const t = Math.min(this.el?.currentTime ?? 0, clip.duration);
-    this.shown = this.mode === 'ended' ? 1 : Math.max(this.shown, Math.min(1, t / clip.duration));
+    const span = this.span();
+    const t = Math.min(this.time(), span);
+    this.shown = this.mode === 'ended' ? 1 : Math.max(this.shown, Math.min(1, t / span));
+    if (this.kind === 'text') {
+      // Modo texto: texto inteiro aceso, boca parada; a borda segue o relógio.
+      const all = clip.words.length;
+      return {
+        ...base,
+        voice: false,
+        t,
+        progress: this.shown,
+        spoken: all,
+        active: -1,
+        speaking: false,
+        level: null,
+      };
+    }
     let spoken = 0;
     let active = -1;
     clip.words.forEach((w, i) => {
@@ -451,17 +497,21 @@ export class VoicePlayer {
   }
 
   private tick = (): void => {
-    if (!this.clip || this.kind !== 'voice' || this.mode !== 'playing') {
+    if (!this.clip || this.mode !== 'playing') {
       this.emit();
       return;
     }
     const el = this.el;
-    if (el && (el.ended || el.currentTime >= this.clip.duration - 0.005)) {
+    const done =
+      this.kind === 'voice'
+        ? !!el && (el.ended || el.currentTime >= this.clip.duration - 0.005)
+        : this.time() >= this.span();
+    if (done) {
       this.mode = 'ended';
       this.emit();
       this.stopLoop();
       const id = this.id;
-      if (id) this.opts.onEnd(id);
+      if (id) this.opts.onEnd(id, this.kind === 'voice');
       return;
     }
     this.emit();
@@ -480,10 +530,10 @@ export class VoicePlayer {
     gsap.ticker.remove(this.tick);
   }
 
-  /** Aba em segundo plano: pausa a fala; ao voltar, retoma de onde parou. */
+  /** Aba em segundo plano: pausa a fala ou o relógio; ao voltar, retoma de onde parou. */
   private handleVisibility = (): void => {
     if (document.hidden) {
-      if (this.kind === 'voice' && this.mode === 'playing') {
+      if (this.mode === 'playing') {
         this.pause();
         this.hiddenPause = true;
       }

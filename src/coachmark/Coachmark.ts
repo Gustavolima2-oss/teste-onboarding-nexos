@@ -41,8 +41,8 @@ const LAYER_CLASS = 'is-coach-layer';
 /** Alvo perdendo o destaque: continua acima do overlay durante a transição. */
 const LEAVING_CLASS = 'is-coach-leaving';
 const LAYER_LEAVING_CLASS = 'is-coach-layer-leaving';
-/** Distância do centro do pin (etapa 3) à base do balão "Fixar no menu" (px, pin 1,5×). */
-const ACTION_TIP_GAP = 26;
+/** Distância do centro do pin (etapa 3) à base do balão "Fixar no menu" (px, pin 1,8×). */
+const ACTION_TIP_GAP = 30;
 /** Migração do destaque entre alvos (ms). */
 export const TARGET_TRANSITION_MS = 520;
 /** Entrada do tooltip: fade + translateX −8 → 0 + escala 0,96 → 1. */
@@ -85,13 +85,12 @@ export type StepLayout = {
   nexo: Rect;
   nexoAnchor: { x: number; y: number };
   nexoPlacement: Placement;
+  /** Mídia do topo do tooltip (378×210), em px da viewport; null sem mídia. */
+  media: Rect | null;
 };
 
-/**
- * O ícone mostra a AÇÃO do clique: alto-falante (modo texto), alto-falante pulsando (voz
- * armada: o navegador bloqueou o áudio) ou pausa (falando).
- */
-export type VoiceButtonState = 'off' | 'armed' | 'playing';
+/** O ícone mostra a AÇÃO do clique: alto-falante (modo texto) ou pausa (falando). */
+export type VoiceButtonState = 'off' | 'playing';
 
 /** Botões do Figma: "Próximo" 87×40 e "Finalizar" 89×40 (etapa 9). */
 const NEXT_SIZE = { next: { w: 87, h: 40 }, final: { w: 89, h: 40 } };
@@ -131,10 +130,14 @@ export class Coachmark {
   private opened = false;
   private demo: PreviewDemo | null = null;
   /**
-   * "Próximo" bloqueado durante a fala (modo com voz). Nos modos texto e armado, ativo.
-   * Volta a bloquear a cada etapa nova (goTo); o orquestrador define pelo modo.
+   * "Próximo" bloqueado enquanto a borda de progresso enche (fala ou timer do modo texto).
+   * Volta a bloquear a cada etapa nova (goTo); o orquestrador libera quando ela completa.
    */
   private nextLocked = true;
+  /** Vídeo em loop do topo do tooltip (kind 'loop'), criado quando o tooltip entra. */
+  private loopVideo: HTMLVideoElement | null = null;
+  /** Convite "Começar" (autoplay bloqueado), antes da primeira etapa. */
+  private readonly invite: HTMLDivElement;
   private voiceState: VoiceButtonState | null = null;
   private busy = false;
   /** Elemento de ação da etapa (advanceOn 'action'), fora do tooltip. */
@@ -202,6 +205,15 @@ export class Coachmark {
     this.actionTip.className = 'coach-action-tip';
     this.actionTip.setAttribute('aria-hidden', 'true');
     this.actionTip.hidden = true;
+    this.invite = document.createElement('div');
+    this.invite.className = 'coach-invite';
+    this.invite.setAttribute('role', 'dialog');
+    this.invite.setAttribute('aria-modal', 'true');
+    this.invite.setAttribute('aria-label', 'Começar o tour com o Nexo');
+    this.invite.hidden = true;
+    this.invite.innerHTML = `
+      <p class="coach-invite-hint">Ative o som para ouvir o Nexo</p>
+      <button type="button" class="coach-invite-start">Começar</button>`;
     this.dotsEl = q<HTMLDivElement>('.coach-dots');
     this.audioButton = q<HTMLButtonElement>('.coach-audio');
     this.nextButton = q<HTMLButtonElement>('.coach-next');
@@ -229,7 +241,7 @@ export class Coachmark {
     this.previousFocus = document.activeElement;
     trackInputModality();
     setDim(dimmed ? 1 : 0);
-    document.body.append(this.overlay, this.tooltip, this.actionTip);
+    document.body.append(this.overlay, this.tooltip, this.actionTip, this.invite);
     this.lockScroll();
     this.tooltip.addEventListener('click', this.handleClick);
     document.addEventListener('click', this.handleTargetClick, true);
@@ -238,6 +250,7 @@ export class Coachmark {
     // outro listener (e sem o comportamento padrão do navegador).
     window.addEventListener('keydown', this.swallowEscape, true);
     window.addEventListener('keyup', this.swallowEscape, true);
+    document.addEventListener('visibilitychange', this.handleVisibility);
     window.addEventListener('resize', this.handleResize);
   }
 
@@ -322,7 +335,7 @@ export class Coachmark {
     this.tooltip.hidden = false;
     this.tooltip.classList.add('is-visible');
     // Etapa de ação: o foco vai para o elemento da ação (Enter/Espaço já o acionam). Com o
-    // "Próximo" ainda bloqueado (fala em andamento), o foco fica no próprio tooltip e passa
+    // "Próximo" ainda bloqueado (borda enchendo), o foco fica no próprio tooltip e passa
     // para o "Próximo" quando ele é ativado.
     focusWithModality(this.actionEl ?? (this.nextButton.disabled ? this.tooltip : this.nextButton));
     if (!animate) {
@@ -385,7 +398,7 @@ export class Coachmark {
     this.syncNext();
   }
 
-  /** "Próximo" bloqueado: o modo com voz ainda está falando. */
+  /** "Próximo" bloqueado: a borda de progresso ainda está enchendo. */
   get isNextLocked(): boolean {
     return this.nextLocked;
   }
@@ -405,7 +418,7 @@ export class Coachmark {
 
   /**
    * Estado do "Próximo": desabilitado em transição, na etapa de ação (sem "Próximo":
-   * invisível, ocupando o lugar) e durante a fala (modo com voz).
+   * invisível, ocupando o lugar) e enquanto a borda de progresso enche.
    */
   private syncNext(): void {
     const off = this.busy || this.isActionStep() || this.nextLocked;
@@ -415,14 +428,13 @@ export class Coachmark {
 
   /**
    * Estado do ícone de som, sempre mostrando a ação do clique: 'off' (modo texto:
-   * alto-falante, "Ouvir o Nexo"), 'armed' (autoplay bloqueado: alto-falante pulsando) ou
-   * 'playing' (falando: pausa, "Pausar", aria-pressed).
+   * alto-falante, "Ouvir o Nexo") ou 'playing' (falando: pausa, "Pausar", aria-pressed).
    */
   setVoiceState(state: VoiceButtonState): void {
     if (state === this.voiceState) return;
     this.voiceState = state;
     const b = this.audioButton;
-    const label = { off: 'Ouvir o Nexo', armed: 'Ouvir o Nexo', playing: 'Pausar' }[state];
+    const label = { off: 'Ouvir o Nexo', playing: 'Pausar' }[state];
     b.setAttribute('aria-pressed', String(state === 'playing'));
     b.setAttribute('aria-label', label);
     b.title = label;
@@ -462,6 +474,96 @@ export class Coachmark {
     this.demo?.start();
   }
 
+  /**
+   * Mídia em loop (kind 'loop'): <video autoplay muted loop playsinline> sobre a capa (WebM
+   * primeiro, MP4 de alternativa). Com movimento reduzido, ou se o vídeo falhar, fica só a
+   * capa. Não mexe em voz, borda nem avanço.
+   */
+  startLoop(): void {
+    const step = this.opts.steps[this.index];
+    const media = step?.tooltip.media;
+    if (!media?.sources?.length || this.loopVideo || prefersReducedMotion()) return;
+    const v = document.createElement('video');
+    v.className = 'coach-loop';
+    v.autoplay = true;
+    v.muted = true;
+    v.defaultMuted = true;
+    v.loop = true;
+    v.playsInline = true;
+    v.preload = 'metadata';
+    v.poster = media.poster;
+    v.setAttribute('autoplay', '');
+    v.setAttribute('muted', '');
+    v.setAttribute('loop', '');
+    v.setAttribute('playsinline', '');
+    v.setAttribute('aria-hidden', 'true');
+    v.tabIndex = -1;
+    const sources = media.sources.map(({ src, type }) => {
+      const el = document.createElement('source');
+      el.src = src;
+      el.type = type;
+      return el;
+    });
+    // Falhou (a última fonte deu erro, ou o elemento): sai o vídeo, a capa continua.
+    const fail = () => {
+      if (this.loopVideo !== v) return;
+      v.remove();
+      this.loopVideo = null;
+    };
+    sources[sources.length - 1]?.addEventListener('error', fail);
+    v.addEventListener('error', fail);
+    v.append(...sources);
+    const poster = this.mediaEl.querySelector('.coach-poster');
+    if (poster) poster.after(v);
+    else this.mediaEl.prepend(v);
+    this.loopVideo = v;
+    void v.play().catch(() => undefined);
+  }
+
+  /**
+   * Convite de início (o navegador bloqueou o som): card no visual dos tooltips, onde o
+   * tooltip da etapa vai entrar, com "Ative o som para ouvir o Nexo" e o botão "Começar".
+   * Não é uma etapa (sem bolinhas). Resolve no clique (um gesto do usuário, que libera o
+   * áudio), depois que o convite sai.
+   */
+  showInvite(at: { x: number; y: number }): Promise<void> {
+    const el = this.invite;
+    el.style.left = `${at.x}px`;
+    el.style.top = `${at.y}px`;
+    el.hidden = false;
+    const btn = el.querySelector<HTMLButtonElement>('.coach-invite-start');
+    const reduced = prefersReducedMotion();
+    gsap.fromTo(
+      el,
+      { opacity: 0, x: reduced ? 0 : TOOLTIP_IN.offset, scale: reduced ? 1 : TOOLTIP_IN.scale },
+      {
+        opacity: 1,
+        x: 0,
+        scale: 1,
+        duration: TOOLTIP_IN.duration,
+        ease: 'power3.out',
+        clearProps: 'transform',
+      },
+    );
+    if (btn) focusWithModality(btn);
+    return new Promise((resolve) => {
+      btn?.addEventListener(
+        'click',
+        () => {
+          // O gesto já liberou o áudio: o chamador toca a fala logo em seguida.
+          resolve();
+          void gsap
+            .to(el, { opacity: 0, duration: TOOLTIP_OUT.duration, ease: 'power2.in' })
+            .then(() => {
+              el.hidden = true;
+              gsap.set(el, { clearProps: 'opacity,transform' });
+            });
+        },
+        { once: true },
+      );
+    });
+  }
+
   /** Recalcula posições sem animar (resize). */
   relayout(): StepLayout | null {
     if (this.index < 0) return null;
@@ -475,6 +577,7 @@ export class Coachmark {
     this.opened = false;
     this.unbindAction();
     this.actionTip.remove();
+    this.invite.remove();
     this.dimTween?.kill();
     this.tooltipTween?.kill();
     this.stopMedia();
@@ -507,6 +610,7 @@ export class Coachmark {
     document.removeEventListener('keydown', this.handleKeydown);
     window.removeEventListener('keydown', this.swallowEscape, true);
     window.removeEventListener('keyup', this.swallowEscape, true);
+    document.removeEventListener('visibilitychange', this.handleVisibility);
     untrackInputModality();
     document.removeEventListener('click', this.handleTargetClick, true);
     document.documentElement.classList.remove('is-coach-busy');
@@ -570,6 +674,12 @@ export class Coachmark {
    */
   setActionPulse(on: boolean): void {
     this.actionEl?.classList.toggle('is-pulsing', on);
+    // Halo suave pulsando no card inteiro (o alvo da etapa), para o olhar ir até ele.
+    for (const el of this.targets) el.classList.toggle('is-coach-halo', on && !!this.actionEl);
+    if (!on)
+      document
+        .querySelectorAll('.is-coach-halo')
+        .forEach((h) => h.classList.remove('is-coach-halo'));
     if (on) this.showActionTip();
     else this.hideActionTip();
   }
@@ -587,6 +697,8 @@ export class Coachmark {
   }
 
   private unbindAction(): void {
+    // O halo do card sai junto (os alvos já podem ser os da etapa nova).
+    document.querySelectorAll('.is-coach-halo').forEach((h) => h.classList.remove('is-coach-halo'));
     const el = this.actionEl;
     if (!el) return;
     el.classList.remove('is-coach-action', 'is-pulsing');
@@ -711,6 +823,10 @@ export class Coachmark {
     if (t.kind === 'preview') {
       this.mediaEl.innerHTML = previewMarkup();
       this.demo = new PreviewDemo(this.mediaEl);
+    } else if (t.kind === 'loop' && t.media) {
+      // Até o tooltip entrar (e sempre, com movimento reduzido ou se o vídeo falhar), a
+      // capa fica no lugar, no mesmo tamanho e com os mesmos cantos.
+      this.mediaEl.innerHTML = `<img class="coach-poster" src="${t.media.poster}" alt="${t.media.alt}" />`;
     } else if (t.kind === 'image' && t.media) {
       this.mediaEl.innerHTML = `<img class="coach-poster" src="${t.media.poster}" alt="${t.media.alt}" />`;
     }
@@ -718,6 +834,11 @@ export class Coachmark {
 
   private stopMedia(): void {
     this.demo?.stop();
+    if (this.loopVideo) {
+      this.loopVideo.pause();
+      this.loopVideo.remove();
+      this.loopVideo = null;
+    }
   }
 
   // ---------- geometria ----------
@@ -737,14 +858,21 @@ export class Coachmark {
     ];
   }
 
-  /** Tamanho do tooltip (medido mesmo com ele oculto). */
-  private tooltipSize(): { w: number; h: number } {
+  /** Tamanho do tooltip e a caixa da mídia relativa a ele (medidos mesmo com ele oculto). */
+  private tooltipSize(): { w: number; h: number; media: Rect | null } {
     const wasHidden = this.tooltip.hidden;
     if (wasHidden) {
       this.tooltip.style.visibility = 'hidden';
       this.tooltip.hidden = false;
     }
-    const size = { w: this.tooltip.offsetWidth, h: this.tooltip.offsetHeight };
+    const m = this.mediaEl;
+    const size = {
+      w: this.tooltip.offsetWidth,
+      h: this.tooltip.offsetHeight,
+      media: m.hidden
+        ? null
+        : { x: m.offsetLeft, y: m.offsetTop, w: m.offsetWidth, h: m.offsetHeight },
+    };
     if (wasHidden) {
       this.tooltip.hidden = true;
       this.tooltip.style.visibility = '';
@@ -780,6 +908,7 @@ export class Coachmark {
       nexo: nexo.rect,
       nexoAnchor: nexo.anchor,
       nexoPlacement: nexo.placement,
+      media: size.media && { ...size.media, x: rect.x + size.media.x, y: rect.y + size.media.y },
     };
     this.lastLayout = layout;
     this.opts.onLayout?.(layout, reason);
@@ -882,7 +1011,7 @@ export class Coachmark {
     if (advances) {
       e.preventDefault();
       e.stopPropagation();
-      // Mesma regra do "Próximo": no modo com voz, só depois que a fala termina.
+      // Mesma regra do "Próximo": só depois que a borda completa (nos dois modos).
       if (!this.busy && !this.nextLocked) this.opts.onNext(this.index);
       return;
     }
@@ -942,6 +1071,14 @@ export class Coachmark {
         : (i + (e.shiftKey ? -1 : 1) + focusables.length) % focusables.length;
     const el = focusables[nextIndex];
     if (el) focusWithModality(el);
+  };
+
+  /** Aba em segundo plano: o vídeo em loop pausa; ao voltar, continua (tooltip aberto). */
+  private handleVisibility = (): void => {
+    const v = this.loopVideo;
+    if (!v) return;
+    if (document.hidden) v.pause();
+    else if (!this.tooltip.hidden) void v.play().catch(() => undefined);
   };
 
   private handleResize = (): void => {

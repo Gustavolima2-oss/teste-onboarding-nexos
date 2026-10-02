@@ -3,7 +3,8 @@
 // Contrato:
 //   mount, appearAt, flyTo, gesture, talk, lookAt, setExpression, exit, on, destroy.
 // Extras (fora do contrato, opcionais): placeAt (reposiciona sem animar), hide,
-// useFallback (troca para o PNG), stopTalking, e o 2º parâmetro de gesture (alvo do "point").
+// useFallback (troca para o PNG), stopTalking, vanishInto/emergeTo (entra numa mídia
+// que já mostra o Nexo e sai dela), e o 2º parâmetro de gesture (alvo do "point").
 // Os gestos são movimentos de corpo inteiro (a malha não tem esqueleto).
 //
 // Sem WebGL, ou se o GLB falhar, o NexoGuide troca sozinho para um PNG
@@ -66,6 +67,12 @@ const IDLE_FADE = { in: 0.6, out: 0.15 };
  * volta à frente (s). Assim nenhum eixo tem duas animações ao mesmo tempo.
  */
 const RELAX = { duration: 0.1, idleFade: 0.2 };
+/**
+ * Entrar numa mídia (vanishInto) e sair dela (emergeTo): voo em arco de 700 ms,
+ * escala 1 ↔ 0,3 e opacidade 1 ↔ 0 ao longo do caminho, sem overshoot. Com movimento
+ * reduzido, só um fade de 200 ms.
+ */
+const VANISH = { duration: 0.7, scale: 0.3, reducedFade: 0.2 };
 /** Saída: voa para fora pelo canto superior direito. */
 const EXIT = { duration: 0.9, margin: 160 };
 /**
@@ -100,6 +107,8 @@ export class NexoGuide implements NexoGuideApi {
   private flying = false;
   private anchor: Point = { x: 0, y: 0 };
   private visible = false;
+  /** Dentro de uma mídia (vanishInto): invisível, sem render, olhar, flutuação nem boca. */
+  private vanished = false;
   /** Voz gravada (opcional): o destroy() também para e descarrega os áudios. */
   private voice: { destroy(): void } | null = null;
 
@@ -124,6 +133,11 @@ export class NexoGuide implements NexoGuideApi {
 
   get isFlying(): boolean {
     return this.flying;
+  }
+
+  /** Fora de cena, dentro de uma mídia (vanishInto), até o emergeTo. */
+  get isVanished(): boolean {
+    return this.vanished;
   }
 
   get position(): Point {
@@ -290,6 +304,109 @@ export class NexoGuide implements NexoGuideApi {
     this.arrive();
   }
 
+  /**
+   * Voa para dentro de uma mídia que já mostra o Nexo (extra, fora do contrato):
+   * arco de 700 ms encolhendo (1 → 0,3) e sumindo (1 → 0). Depois fica fora de cena:
+   * loop de render parado, sem olhar, flutuação, gestos nem boca, até o emergeTo.
+   * `animate: false` já começa fora de cena (etapa aberta direto, ?step=N).
+   */
+  async vanishInto(
+    anchor: Anchor,
+    opts: { duration?: number; animate?: boolean } = {},
+  ): Promise<void> {
+    this.finishCurrent();
+    const to = anchorPoint(anchor);
+    const from = { ...this.anchor };
+    this.anchor = to;
+    this.gestureTl?.kill();
+    this.restCall?.kill();
+    this.stopTalking();
+    this.speakLevel(null);
+    const tl = gsap.timeline({ paused: opts.animate === false });
+    this.current = tl;
+    if (opts.animate === false) {
+      if (this.img) this.img.style.opacity = '0';
+    } else if (this.img) {
+      tl.to(this.img, { opacity: 0, duration: VANISH.reducedFade, ease: 'power1.in' });
+    } else if (this.stage) {
+      const stage = this.stage;
+      this.flying = true;
+      this.setIdle(false);
+      this.setLookEnabled(false);
+      if (prefersReducedMotion()) {
+        tl.to(stage.motion, { opacity: 0, duration: VANISH.reducedFade, ease: 'power1.in' });
+      } else {
+        // Relaxa 100 ms (junto com a saída do tooltip) e entra na mídia.
+        this.relaxInto(tl, stage, RELAX.duration);
+        tl.call(() => this.look?.reset());
+        this.buildFlight(tl, stage, from, to, opts.duration ?? VANISH.duration, {
+          from: 1,
+          to: VANISH.scale,
+        });
+      }
+    }
+    if (opts.animate !== false) await tl.then();
+    if (this.current === tl) this.current = null;
+    this.flying = false;
+    this.visible = false;
+    this.vanished = true;
+    this.placeImg();
+    const stage = this.stage;
+    if (stage) {
+      this.idleTween?.kill();
+      this.idleTween = null;
+      stage.idle.amount = 0;
+      Object.assign(stage.body, REST_POSE);
+      this.look?.reset();
+      Object.assign(stage.motion, { x: 0, y: 0, bank: 0, yaw: 0, scale: VANISH.scale, opacity: 0 });
+      stage.setAnchor(to);
+      // Último quadro já transparente (o canvas guarda o que foi desenhado) e o loop para.
+      stage.renderNow();
+      stage.stop();
+    }
+  }
+
+  /**
+   * Sai da mídia em que entrou (vanishInto) e voa até `anchor`, crescendo (0,3 → 1) e
+   * aparecendo (0 → 1): o caminho inverso, com a mesma duração.
+   */
+  async emergeTo(
+    anchor: Anchor,
+    opts: { facing?: 'left' | 'right'; duration?: number } = {},
+  ): Promise<void> {
+    if (!this.vanished) return this.flyTo(anchor, opts);
+    this.finishCurrent();
+    const to = anchorPoint(anchor);
+    const from = { ...this.anchor };
+    this.anchor = to;
+    this.vanished = false;
+    this.visible = true;
+    const tl = gsap.timeline();
+    this.current = tl;
+    this.flying = true;
+    if (this.img) {
+      this.placeImg();
+      tl.to(this.img, { opacity: 1, duration: VANISH.reducedFade, ease: 'power1.out' });
+    } else if (this.stage) {
+      const stage = this.stage;
+      if (opts.facing) stage.setFacing(opts.facing);
+      stage.start();
+      if (prefersReducedMotion()) {
+        stage.setAnchor(to);
+        Object.assign(stage.motion, { x: 0, y: 0, scale: 1, opacity: 0 });
+        tl.to(stage.motion, { opacity: 1, duration: VANISH.reducedFade, ease: 'power1.out' });
+      } else {
+        this.buildFlight(tl, stage, from, to, opts.duration ?? VANISH.duration, {
+          from: VANISH.scale,
+          to: 1,
+        });
+      }
+    }
+    await tl.then();
+    if (this.current === tl) this.current = null;
+    this.arrive();
+  }
+
   /** Fim de um voo: pose neutra no destino, volta a flutuar e piscadela. */
   private arrive(): void {
     this.flying = false;
@@ -318,9 +435,10 @@ export class NexoGuide implements NexoGuideApi {
     this.placeImg();
   }
 
-  /** Voa para fora pelo canto superior direito (~900 ms) e some. */
+  /** Voa para fora pelo canto superior direito (~900 ms) e some. Fora de cena: nada a fazer. */
   async exit(): Promise<void> {
     this.finishCurrent();
+    if (this.vanished) return;
     this.gestureTl?.kill();
     this.restCall?.kill();
     this.stopTalking();
@@ -367,7 +485,7 @@ export class NexoGuide implements NexoGuideApi {
 
   async gesture(name: Gesture, opts: { target?: Anchor } = {}): Promise<void> {
     const stage = this.stage;
-    if (!stage) return; // PNG: sem gestos
+    if (!stage || this.vanished) return; // PNG ou fora de cena: sem gestos
     this.gestureTl?.kill();
     this.restCall?.kill();
     const reduced = prefersReducedMotion();
@@ -445,7 +563,8 @@ export class NexoGuide implements NexoGuideApi {
    */
   speakLevel(level: number | 'auto' | null): void {
     const face = this.stage?.face;
-    if (!face) return;
+    // Fora de cena: a fala segue (grifo e gradiente), sem boca.
+    if (!face || (this.vanished && level !== null)) return;
     face.setTalkLevel(level);
     // Só mexe na expressão ao entrar ou sair da fala (listen, wink etc. ficam intactos).
     if (level !== null) this.expression = 'talk';
@@ -491,6 +610,8 @@ export class NexoGuide implements NexoGuideApi {
     from: Point,
     to: Point,
     duration: number,
+    /** Entrar/sair de uma mídia: escala de→para e opacidade junto (0 na escala menor). */
+    shrink?: { from: number; to: number },
   ): void {
     const m = stage.motion;
     const arc = makeArc(from, to);
@@ -513,7 +634,13 @@ export class NexoGuide implements NexoGuideApi {
         m.bank = bankFromVelocity(vx, arc.distance, duration);
         const env = midFlight(p);
         m.yaw = arc.dirX * FLIGHT.yawTurnDeg * env * stage.facing;
-        m.scale = 1 - (1 - FLIGHT.depthScale) * env;
+        if (shrink) {
+          const k = shrink.from + (shrink.to - shrink.from) * p;
+          m.scale = k;
+          m.opacity = shrink.to < shrink.from ? 1 - p : p;
+        } else {
+          m.scale = 1 - (1 - FLIGHT.depthScale) * env;
+        }
       },
     });
   }

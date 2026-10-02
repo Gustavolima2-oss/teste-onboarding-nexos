@@ -16,6 +16,7 @@ import type { Placement } from './placement';
 import type { Route } from '../app/router';
 import { VOICES } from '../voice/voice';
 import { appState } from '../app/state';
+import { asset } from '../utils/asset';
 
 export type { Route } from '../app/router';
 
@@ -55,8 +56,11 @@ export type Step = {
   /** Texto do tooltip (= texto do manifesto, sem título; uma frase na maioria). */
   text: string;
   tooltip: {
-    /** 'text' | 'preview' (demo do cursor) | 'image'. */
-    kind: 'text' | 'preview' | 'image';
+    /**
+     * 'text' | 'preview' (demo do cursor) | 'image' |
+     * 'loop' (vídeo mudo em loop, sem controles, que começa quando o tooltip entra).
+     */
+    kind: 'text' | 'preview' | 'image' | 'loop';
     placement: 'right' | 'left' | 'top' | 'bottom';
     /**
      * Posição do tooltip medida no Figma, relativa ao alvo:
@@ -68,6 +72,11 @@ export type Step = {
     media?: {
       poster: string;
       alt: string;
+      /**
+       * Vídeo mudo em loop ('loop'): fontes em ordem de preferência (WebM primeiro, MP4
+       * de alternativa). A capa (`poster`) fica enquanto carrega e se falhar.
+       */
+      sources?: { src: string; type: string }[];
     };
   };
   nexo: {
@@ -79,6 +88,12 @@ export type Step = {
     offset: { x: number; y: number };
     facing: 'left' | 'right';
     gesture: Gesture;
+    /**
+     * A mídia do tooltip já mostra o Nexo: ao entrar na etapa, o Nexo 3D voa para dentro
+     * dela e fica fora de cena (sem render) até sair da etapa. O offset continua valendo
+     * para o layout do tooltip.
+     */
+    intoMedia?: boolean;
   };
   /**
    * Efeitos de ter passado por esta etapa, valendo da etapa seguinte em diante.
@@ -201,17 +216,29 @@ export const STEPS: Step[] = [
   }),
   step({
     // Figma 2631:3475 (1920×1080) — alvo: linha do Waz em "Seu time" 2631:3541 (508,325 832×96,
-    // card branco com a mensagem); tooltip 2631:3557 (962,444 378×~201, texto em 4 linhas):
-    // abaixo do card, alinhado à direita (454 = 962 − 508; 23 = 444 − 421); Nexo 2631:3555:
-    // corpo em (1500,3; 521,3), 160,3 px à direita do tooltip e 23,4 px acima do centro dele.
+    // card branco com a mensagem). O tooltip leva o vídeo do Waz com o Nexo no topo (como
+    // o 2483:6455): abaixo do card, alinhado à direita (454 = 962 − 508; 23 = 444 − 421).
+    // O vídeo já mostra o Nexo: o 3D entra nele (intoMedia); o offset só reserva o lugar.
     id: 'waz',
     route: '/home',
     target: '[data-coach="member-waz"]',
     highlight: 'none',
     advanceOn: 'next',
     voice: 'step-09-waz',
-    tooltip: { kind: 'text', placement: 'bottom', offset: { x: 454, y: 23 } },
-    nexo: { offset: { x: 160.3, y: -23.4 }, facing: 'left', gesture: 'wave' },
+    tooltip: {
+      kind: 'loop',
+      placement: 'bottom',
+      offset: { x: 454, y: 23 },
+      media: {
+        poster: asset('video/waz-nexo-poster.jpg'),
+        alt: 'Kauê e o Waz',
+        sources: [
+          { src: asset('video/waz-nexo.webm'), type: 'video/webm' },
+          { src: asset('video/waz-nexo.mp4'), type: 'video/mp4' },
+        ],
+      },
+    },
+    nexo: { offset: { x: 160.3, y: -23.4 }, facing: 'left', gesture: 'wave', intoMedia: true },
     // A Home mostra a mensagem do Waz a partir desta etapa (e ela fica depois do fim).
     shows: { wazMessage: true },
   }),

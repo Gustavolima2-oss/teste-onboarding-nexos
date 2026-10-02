@@ -109,7 +109,7 @@ function installShortcuts(): void {
   });
 }
 
-type State = 'opening' | 'ready' | 'transition' | 'closing' | 'closed' | 'off';
+type State = 'opening' | 'invite' | 'ready' | 'transition' | 'closing' | 'closed' | 'off';
 /** Estado no <html data-coach-state> e etapa em data-coach-step (testes e capturas). */
 const setState = (s: State, step?: string) => {
   const d = document.documentElement.dataset;
@@ -126,6 +126,9 @@ const targetCenter = (l: StepLayout): Point => ({
   x: l.target.x + l.target.w / 2,
   y: l.target.y + l.target.h / 2,
 });
+/** Centro da mídia do tooltip: onde o Nexo fica na etapa em que entra no vídeo (intoMedia). */
+const mediaCenter = (l: StepLayout): Point | null =>
+  l.media ? { x: l.media.x + l.media.w / 2, y: l.media.y + l.media.h / 2 } : null;
 
 /**
  * Aplica o estado do fluxo da etapa `index` (derivado de steps.ts): serve para os
@@ -226,10 +229,10 @@ async function start(): Promise<void> {
   let current = initial;
   let closing = false;
   /**
-   * O usuário pausou a voz: o tour segue no modo texto (texto branco, "Próximo" ativo, sem
-   * avanço automático) até ele clicar no ícone de som de novo. O tour começa COM voz; se o
-   * navegador bloquear o áudio (autoplay), a etapa fica com a voz armada até a primeira
-   * interação (VoicePlayer). Dev: ?voice=off começa no modo texto.
+   * O usuário pausou a voz: o tour segue no modo texto (texto branco, borda no tempo do
+   * áudio, sem avanço automático) até ele clicar no ícone de som de novo. O tour começa COM
+   * voz; se o navegador bloquear o som, um convite "Começar" vem antes da primeira etapa.
+   * Dev: ?voice=off começa no modo texto.
    */
   let textMode = import.meta.env.DEV && params.get('voice') === 'off';
   /** Avanço automático agendado (fim da fala + 400 ms). */
@@ -243,30 +246,24 @@ async function start(): Promise<void> {
   const uninstallAudioUnlock = installAudioUnlock();
   const voice = new VoicePlayer({
     onFrame: (f) => {
-      // Borda de progresso só no modo com voz; nos modos texto e armado, texto todo branco.
+      // Borda de progresso (fala ou timer do modo texto) e grifo (no modo texto, tudo branco).
       coach.setVoiceProgress(f.progress, f.spoken);
-      // Ícone: pausa enquanto fala; alto-falante nos modos texto e armado (pulsando no armado).
-      coach.setVoiceState(
-        f.kind === 'voice' && f.mode === 'playing'
-          ? 'playing'
-          : f.kind === 'armed'
-            ? 'armed'
-            : 'off',
-      );
-      // "Próximo": desativado só durante a fala (modo com voz); ativo nos modos texto e
-      // armado e no fim da fala. Deriva só do modo, nunca de um timer.
-      if (f.id) coach.setNextLocked(f.kind === 'voice' && f.mode !== 'ended');
-      // Boca: só com voz e palavra ativa; entre palavras, na pausa, no fim e nos modos texto e
-      // armado, sorriso no mesmo quadro.
+      // Ícone: pausa enquanto fala; alto-falante no modo texto.
+      coach.setVoiceState(f.kind === 'voice' && f.mode === 'playing' ? 'playing' : 'off');
+      // "Próximo": desativado enquanto a borda enche, nos dois modos; ativo quando completa.
+      if (f.id) coach.setNextLocked(f.mode !== 'ended');
+      // Boca: só com voz e palavra ativa; entre palavras, na pausa, no fim e no modo texto,
+      // sorriso no mesmo quadro.
       nexo.speakLevel(f.voice && f.speaking ? (f.level ?? 'auto') : null);
     },
-    onEnd: (id) => {
+    onEnd: (id, spoken) => {
       const step = STEPS[current];
       if (busy || closing || !step || step.voice !== id) return;
       cancelAutoAdvance();
-      // Fim da fala: avança sozinho 400 ms depois. Nunca na etapa de ação (avança pelo pin)
-      // nem na última (o "Finalizar" só é ativado).
-      if (step.advanceOn === 'action' || current >= STEPS.length - 1) return;
+      // Borda completa: o "Próximo" já foi ativado (onFrame). Avanço automático só no modo
+      // com voz, 400 ms depois do fim da fala; nunca no modo texto, na etapa de ação (avança
+      // pelo pin) nem na última (o "Finalizar" só é ativado).
+      if (!spoken || step.advanceOn === 'action' || current >= STEPS.length - 1) return;
       autoAdvance = gsap.delayedCall(AUTO_ADVANCE_DELAY_S, () => {
         autoAdvance = null;
         if (busy || closing || STEPS[current]?.voice !== id) return;
@@ -290,7 +287,7 @@ async function start(): Promise<void> {
     onLayout: (layout, reason) => {
       // Resize: reposiciona sem animar (se estiver voando, o voo é concluído no destino novo).
       if (reason !== 'resize') return;
-      nexo.placeAt(center(layout));
+      nexo.placeAt((nexo.isVanished && mediaCenter(layout)) || center(layout));
       nexo.lookAt(tooltipCenter(layout));
     },
     onNext: (index) => {
@@ -310,13 +307,13 @@ async function start(): Promise<void> {
     onVoiceToggle: () => {
       if (busy) return;
       if (voice.isVoice && (voice.state === 'playing' || voice.state === 'paused')) {
-        // Falando: pausar leva ao modo texto na hora (texto branco, boca no padrão, sem
-        // borda, "Próximo" ativo) nesta etapa e nas seguintes.
+        // Falando: pausar leva ao modo texto na hora (texto branco, boca no padrão; a borda
+        // continua de onde estava, no ritmo do modo texto) nesta etapa e nas seguintes.
         textMode = true;
         voice.toText();
       } else {
-        // Modo texto, armado ou fala terminada: (re)liga a voz e fala a etapa do início
-        // (texto cinza, borda do zero, "Próximo" desativado até o fim da fala).
+        // Modo texto ou fala terminada: religa a voz e fala a etapa do início (texto cinza,
+        // borda do zero, "Próximo" desativado até o fim da fala).
         textMode = false;
         cancelAutoAdvance();
         coach.prepareText(true);
@@ -336,19 +333,23 @@ async function start(): Promise<void> {
     debug.setStep(step.id);
     busy = false;
     coach.prepareText(!textMode);
-    // Modo texto: "Próximo" ativo desde a entrada do tooltip. Com voz, desativado até o fim
-    // da fala (ou até o navegador bloquear o áudio: voz armada, botão ativo).
-    coach.setNextLocked(!textMode);
-    await coach.showTooltip();
+    // Nos dois modos, o "Próximo" fica desativado até a borda completar.
+    coach.setNextLocked(true);
+    const shown = coach.showTooltip();
+    // O Nexo acabou de entrar no vídeo: ele começa junto com o tooltip.
+    if (step.nexo.intoMedia) coach.startLoop();
+    await shown;
     if (closing || STEPS[current] !== step) return;
     setState('ready', step.id);
-    // A fala começa com o tooltip já na tela (ou só o texto, no modo texto).
+    // A fala (ou o timer do modo texto) começa com o tooltip já na tela.
     void voice.start(step.voice, textMode ? 'text' : 'voice');
     // Etapa de ação: o pin ganha o destaque assim que o tooltip entra (até o clique).
     if (step.advanceOn === 'action') coach.setActionPulse(true);
     const next = STEPS[STEPS.indexOf(step) + 1];
     if (next) voice.preload(next.voice);
     if (step.tooltip.kind === 'preview') coach.startDemo();
+    // Vídeo em loop (última etapa): garante que começou.
+    if (step.tooltip.media?.sources) coach.startLoop();
   }
 
   // ---------- ação da etapa (advanceOn 'action') ----------
@@ -453,8 +454,17 @@ async function start(): Promise<void> {
       layout = await coach.goTo(to, { highlight: false });
     }
 
-    const moveNexo = (duration?: number): Promise<void> =>
-      nexo.flyTo(center(layout), { facing: step.nexo.facing, duration });
+    /**
+     * Voo do Nexo até a etapa: para dentro da mídia (intoMedia: o vídeo já o mostra), de
+     * dentro dela (voltando dessa etapa) ou o voo normal.
+     */
+    const moveNexo = (duration?: number): Promise<void> => {
+      // Entrar e sair do vídeo levam sempre ~700 ms (VANISH), mesmo entre telas.
+      const media = step.nexo.intoMedia ? mediaCenter(layout) : null;
+      if (media) return nexo.vanishInto(media);
+      if (nexo.isVanished) return nexo.emergeTo(center(layout), { facing: step.nexo.facing });
+      return nexo.flyTo(center(layout), { facing: step.nexo.facing, duration });
+    };
 
     const tl = gsap.timeline();
     transition = tl;
@@ -521,7 +531,8 @@ async function start(): Promise<void> {
     transition = null;
     coach.setBusy(true);
     const hidden = coach.hideTooltip();
-    await nexo.gesture('bye');
+    // Com o Nexo dentro do vídeo (última etapa), sem tchau nem voo de saída.
+    if (!nexo.isVanished) await nexo.gesture('bye');
     const exited = nexo.exit();
     coach.unhighlight(TARGET_TRANSITION_MS);
     await Promise.all([hidden, coach.dim(0, 0.45, 'power2.inOut'), exited]);
@@ -555,8 +566,29 @@ async function start(): Promise<void> {
     () => {
       // Refaz o layout com a silhueta real do modelo (antes valia a caixa do Figma).
       layout = coach.relayout() ?? layout;
-      void nexo.appearAt(center(layout)).then(async () => {
+      // Aberta direto numa etapa intoMedia (?step=9): o Nexo já começa dentro do vídeo.
+      const media = first.nexo.intoMedia ? mediaCenter(layout) : null;
+      const arrived = media
+        ? nexo.vanishInto(media, { animate: false })
+        : nexo.appearAt(center(layout));
+      void arrived.then(async () => {
         if (closing) return;
+        // O navegador deixa tocar som? (teste em silêncio). Se não, convite "Começar" antes
+        // da primeira etapa: o clique libera o áudio e a etapa entra já falando.
+        if (!textMode && !(await voice.canPlay(first.voice))) {
+          if (closing) return;
+          setState('invite', first.id);
+          void coach.dim(1, OPENING.dimDuration, 'power2.inOut');
+          nexo.lookAt({ x: layout.tooltip.x + 100, y: layout.tooltip.y + 50 });
+          await coach.showInvite({ x: layout.tooltip.x, y: layout.tooltip.y });
+          await voice.unlock();
+          if (closing) return;
+          setState('opening', first.id);
+          coach.highlight(OPENING.dimDuration * 1000);
+          opening = null;
+          await present(first, coach.layout ?? layout);
+          return;
+        }
         // Escurecimento, destaque, tooltip e aceno começam juntos.
         void coach.dim(1, OPENING.dimDuration, 'power2.inOut');
         coach.highlight(OPENING.dimDuration * 1000);

@@ -4,7 +4,7 @@
 
 A voz do Nexo foi trocada pela **voz final**: nove MP3 prontos (gravação única com as nove falas, timbre igualado à voz aprovada, 1,2x, pausas internas encurtadas), em `nexo-voice/sources/`. Eles entram no app **sem nenhum efeito, filtro ou mudança de velocidade**: o build só copia os arquivos (cópia idêntica) e gera as marcações de palavra. O filtro antigo (`robotize.py`) e a pasta `reference/` saíram do projeto.
 
-O comportamento do onboarding não mudou: voz por padrão, grifo palavra por palavra, borda de progresso no "Próximo" no modo com voz, avanço automático no fim da fala, pausa levando ao modo texto e voz armada quando o navegador bloqueia o autoplay (ver o README, seção "Os três modos da voz e o botão Próximo").
+Comportamento: voz desde o início (com o convite "Começar" quando o navegador bloqueia o som), grifo palavra por palavra, borda de progresso no "Próximo" nos dois modos, avanço automático só no modo com voz, pausa levando ao modo texto (borda no tempo do áudio) — ver o README, seção "Voz desde o início, os dois modos e o botão Próximo".
 
 ## 1. Áudios e marcações
 

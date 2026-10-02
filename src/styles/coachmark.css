@@ -123,7 +123,8 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
 
 /* Com mídia (prévia, imagem, vídeo em loop) no topo: ela encosta nas bordas, só pb 24. */
 .coach-tooltip[data-kind='preview'],
-.coach-tooltip[data-kind='image'] {
+.coach-tooltip[data-kind='image'],
+.coach-tooltip[data-kind='loop'] {
   padding-top: 0;
 }
 
@@ -207,31 +208,9 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   opacity: 1;
 }
 
-/* Voz armada (o navegador bloqueou o autoplay): o alto-falante pulsa suavemente até a
-   primeira interação liberar o áudio. */
-.coach-audio[data-voice='armed'] {
-  animation: coach-audio-armed 1.6s ease-in-out infinite;
-}
-
-@keyframes coach-audio-armed {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.55;
-    transform: scale(1.18);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .coach-audio-icon {
     transition: none;
-  }
-
-  .coach-audio[data-voice='armed'] {
-    animation: none;
   }
 }
 
@@ -298,9 +277,9 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   background: #ebeded;
 }
 
-/* Desativado durante a fala (modo com voz): a pílula do Figma (2631:3572) esmaecida, sem
-   hover, com a borda de progresso em volta. No fim da fala (ou nos modos texto e armado)
-   acende em 200 ms. A borda fica fora do botão, sempre nítida. */
+/* Desativado enquanto a borda de progresso enche (fala ou timer do modo texto): a pílula
+   do Figma (2631:3572) esmaecida, sem hover. Quando a borda completa, acende em 200 ms. A
+   borda fica fora do botão, sempre nítida. */
 .coach-next {
   transition:
     opacity 200ms var(--ease-out),
@@ -388,8 +367,9 @@ html:not(.is-coach-busy) .is-coach-target[data-coach-advance]:hover {
   display: none;
 }
 
-/* Capa (kind 'image'): cobre a mídia inteira. */
-.coach-poster {
+/* Capa e vídeo em loop (última etapa): cobrem a mídia inteira. */
+.coach-poster,
+.coach-loop {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -468,60 +448,106 @@ html:not(.is-coach-busy) .is-coach-action:hover {
   outline-offset: 3px;
 }
 
-/* Destaque do pin (etapa 3), da entrada do tooltip até o clique: 1,5× maior, com um
-   salto curto e um anel luminoso laranja (contrasta com o card branco e com o azul do pin)
-   que expande e some a cada 1,2 s. */
+/* Destaque do pin (etapa 3), da entrada do tooltip até o clique: 1,8× maior, laranja do
+   Nexo sobre um disco branco (separa do card), com um salto curto e dois anéis luminosos
+   expandindo em sequência a cada 0,9 s até ~2,2× o pin. */
 .is-coach-action.is-pulsing {
-  transform: scale(1.5);
-  animation: coach-pin-hop 1.2s ease-in-out infinite;
+  border-radius: 50%;
+  background: var(--white);
+  box-shadow:
+    0 0 0 2px var(--white),
+    0 1px 5px rgba(0, 0, 0, 0.35);
+  transform: scale(1.8);
+  animation: coach-pin-hop 0.9s ease-in-out infinite;
 }
 
+.is-coach-action.is-pulsing .tool-card-pin-icon {
+  background: var(--coach-attention);
+}
+
+.is-coach-action.is-pulsing::before,
 .is-coach-action.is-pulsing::after {
   content: '';
   position: absolute;
-  inset: -3px;
+  inset: -2px;
   border: 2px solid var(--coach-attention);
   border-radius: 50%;
   box-shadow:
     0 0 8px 1px var(--coach-attention),
     inset 0 0 4px var(--coach-attention);
+  opacity: 0;
   pointer-events: none;
-  animation: coach-pin-ring 1.2s ease-out infinite;
+  animation: coach-pin-ring 0.9s ease-out infinite;
+}
+
+/* O segundo anel sai meio ciclo depois do primeiro. */
+.is-coach-action.is-pulsing::after {
+  animation-delay: 0.45s;
 }
 
 @keyframes coach-pin-ring {
   0% {
-    opacity: 0.95;
-    transform: scale(0.85);
+    opacity: 1;
+    transform: scale(0.9);
   }
-  75%,
   100% {
     opacity: 0;
-    transform: scale(2.1);
+    transform: scale(2.2);
   }
 }
 
 @keyframes coach-pin-hop {
   0%,
-  30%,
+  35%,
   100% {
-    transform: scale(1.5) translateY(0);
+    transform: scale(1.8) translateY(0);
   }
-  12% {
-    transform: scale(1.5) translateY(-3px);
+  15% {
+    transform: scale(1.8) translateY(-3px);
+  }
+}
+
+/* Halo suave pulsando no card inteiro (Conversas), para o olhar ir até ele; mantém a sombra
+   do card. */
+.is-coach-halo {
+  animation: coach-card-halo 1.8s ease-in-out infinite;
+}
+
+@keyframes coach-card-halo {
+  0%,
+  100% {
+    box-shadow:
+      0 3px 4px rgba(0, 0, 0, 0.15),
+      0 0 0 0 rgba(255, 106, 31, 0);
+  }
+  50% {
+    box-shadow:
+      0 3px 4px rgba(0, 0, 0, 0.15),
+      0 0 18px 6px rgba(255, 106, 31, 0.45);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* Anel parado, mas visível; sem salto. */
+  /* Sem animação: o pin fica 1,8×, laranja, com um anel parado e o halo fixo. */
   .is-coach-action.is-pulsing {
     animation: none;
+  }
+
+  .is-coach-action.is-pulsing::before {
+    display: none;
   }
 
   .is-coach-action.is-pulsing::after {
     animation: none;
     opacity: 0.9;
-    transform: scale(1.25);
+    transform: scale(1.45);
+  }
+
+  .is-coach-halo {
+    animation: none;
+    box-shadow:
+      0 3px 4px rgba(0, 0, 0, 0.15),
+      0 0 14px 4px rgba(255, 106, 31, 0.35);
   }
 }
 
@@ -566,6 +592,31 @@ html:not(.is-coach-busy) .is-coach-action:hover {
   border-top: 7px solid #13161d;
 }
 
+/* Leve balanço horizontal a cada ~2 s, chamando para o pin. */
+.coach-action-tip {
+  animation: coach-tip-sway 2s ease-in-out infinite;
+}
+
+@keyframes coach-tip-sway {
+  0%,
+  70%,
+  100% {
+    transform: translateX(0);
+  }
+  80% {
+    transform: translateX(-4px);
+  }
+  90% {
+    transform: translateX(3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coach-action-tip {
+    animation: none;
+  }
+}
+
 .coach-action-tip[hidden] {
   display: none;
 }
@@ -577,4 +628,65 @@ html:not(.is-coach-busy) .is-coach-action:hover {
   top: 0;
   z-index: var(--z-tooltip);
   pointer-events: none;
+}
+
+/* ---------- Convite de início (o navegador bloqueou o som) ---------- */
+
+/* No visual dos tooltips (fundo escuro, botão branco), onde o tooltip da etapa vai entrar.
+   Não é uma etapa: sem bolinhas nem "Voltar". */
+.coach-invite {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: var(--z-tooltip);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  width: 280px;
+  padding: 24px;
+  border-radius: 8px;
+  background: var(--coach-bg);
+  font-family: var(--font-inter);
+}
+
+.coach-invite[hidden] {
+  display: none;
+}
+
+.coach-invite-hint {
+  margin: 0;
+  color: var(--white);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: normal;
+  letter-spacing: -0.04px;
+  opacity: 0.8;
+}
+
+.coach-invite-start {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  color: var(--gray-black);
+  font-family: var(--font-sf);
+  font-size: 14px;
+  font-weight: var(--fw-medium);
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out);
+}
+
+.coach-invite-start:hover {
+  background: #ebeded;
+}
+
+.coach-invite-start:focus-visible {
+  outline: 2px solid var(--white);
+  outline-offset: 2px;
 }
