@@ -13,7 +13,8 @@
     "measure:png": "node scripts/measure-png-bbox.mjs",
     "test": "node scripts/test-onboarding.mjs",
     "checkpoint": "node scripts/checkpoint-fase2.mjs docs/checkpoints/fase2 1440x900 1920x1080",
-    "record": "node scripts/record.mjs"
+    "record": "node scripts/record.mjs",
+    "demos": "node scripts/record-demos.mjs"
   },
   "dependencies": {
     "gsap": "^3.15.0",
