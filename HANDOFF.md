@@ -4,15 +4,17 @@ Protótipo funcional do onboarding guiado pelo mascote 3D **Nexo**, para ser rei
 
 ## Vídeos
 
-Gravados com o Playwright em 1440×900, a partir do dev server. **Não têm som**: a gravação do Playwright não captura áudio. Para ouvir a voz, use o protótipo publicado.
+Gravados com o Playwright em 1440×900, a partir do dev server. **Não têm som**: a gravação do Playwright não captura áudio. Para ouvir a voz, use o [protótipo publicado](https://gustavolima2-oss.github.io/teste-onboarding-nexos/).
 
-| Vídeo                                        | O que mostra                                                                                                                                                      |
-| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [demo-modo-voz.webm](demo-modo-voz.webm)     | Fluxo completo no modo com voz, da Home ao "Finalizar": avanço automático no fim de cada fala, o pin da etapa 3 e a última etapa com o vídeo (o Nexo entra nele). |
-| [demo-modo-texto.webm](demo-modo-texto.webm) | Fluxo completo depois de pausar a voz na etapa 1: a borda de progresso enchendo, o "Próximo" desativado até completar e os cliques em "Próximo".                  |
-| [demo-voltar.webm](demo-voltar.webm)         | "Voltar" da etapa 6 até a 3: a troca de tela (Seu negócio → Ferramentas) e o favorito desfeito (o item sai da sidebar).                                           |
+| Vídeo               | Assistir no navegador                                                                                    | Arquivos no repositório                                   | O que mostra                                                                                                                                                      |
+| ------------------- | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Modo com voz (1:27) | [▶ demo-modo-voz](https://gustavolima2-oss.github.io/teste-onboarding-nexos/demos/demo-modo-voz.mp4)     | [webm](demo-modo-voz.webm) · [mp4](demo-modo-voz.mp4)     | Fluxo completo no modo com voz, da Home ao "Finalizar": avanço automático no fim de cada fala, o pin da etapa 3 e a última etapa com o vídeo (o Nexo entra nele). |
+| Modo texto (0:53)   | [▶ demo-modo-texto](https://gustavolima2-oss.github.io/teste-onboarding-nexos/demos/demo-modo-texto.mp4) | [webm](demo-modo-texto.webm) · [mp4](demo-modo-texto.mp4) | Fluxo completo depois de pausar a voz na etapa 1: a borda de progresso enchendo, o "Próximo" desativado até completar e os cliques em "Próximo".                  |
+| Voltar (0:14)       | [▶ demo-voltar](https://gustavolima2-oss.github.io/teste-onboarding-nexos/demos/demo-voltar.mp4)         | [webm](demo-voltar.webm) · [mp4](demo-voltar.mp4)         | "Voltar" da etapa 6 até a 3: a troca de tela (Seu negócio → Ferramentas) e o favorito desfeito (o item sai da sidebar).                                           |
 
-Para regravar: `npx vite --port 5199` e `npm run demos` ([scripts/record-demos.mjs](scripts/record-demos.mjs)).
+O GitHub não toca vídeos guardados no repositório (a página do arquivo só oferece download); por isso o deploy ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) publica uma cópia em `…/teste-onboarding-nexos/demos/`, que abre direto no navegador. Os `.webm` são a gravação original; os `.mp4` (H.264) são a mesma gravação, menores e compatíveis com qualquer navegador.
+
+Para regravar: `npx vite --port 5199`, `npm run demos` ([scripts/record-demos.mjs](scripts/record-demos.mjs)) e, para os MP4, `ffmpeg -i demo-X.webm -c:v libx264 -crf 26 -pix_fmt yuv420p -movflags +faststart -an demo-X.mp4`.
 
 ## Sumário
 

@@ -33,6 +33,10 @@ jobs:
       # VITE_DEMO_MODE=true vem do .env.production (tour sempre do início, atalhos R e 1–7).
       - run: npm run build
 
+      # Vídeos de demonstração do HANDOFF.md: o GitHub não toca vídeos do repositório
+      # (a página do arquivo só oferece download); pelo Pages eles abrem no navegador.
+      - run: mkdir -p dist/demos && cp demo-*.mp4 demo-*.webm dist/demos/
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
